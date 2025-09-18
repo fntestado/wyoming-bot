@@ -6,4 +6,15 @@
 output/
 videos/
 traces/
+venv/.env
+*.env
+!.env.example
 venv/
+.venv/
+__pycache__/
+*.pyc
+output/
+videos/
+traces/
+runs/
+.DS_Store
