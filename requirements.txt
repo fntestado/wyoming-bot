@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+aiofiles
+playwright
+2captcha-python
+python-dotenv
+requests
+certifi

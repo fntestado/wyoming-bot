@@ -1,0 +1,8 @@
+# env & secrets
+.env
+*.env
+!.env.example
+# local caches/artifacts
+output/
+videos/
+traces/
