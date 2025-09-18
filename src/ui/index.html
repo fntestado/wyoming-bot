@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wyoming LLC Filing Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <style>
+      html,
+      body {
+        font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
+          "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+      }
+      /* sticky table headers for wide result sets */
+      .sticky-th th {
+        position: sticky;
+        top: 0;
+        background: #f9fafb;
+        z-index: 1;
+      }
+      /* multi-line clamp without Tailwind plugin */
+      .clamp-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 text-gray-900">
+    <div class="max-w-6xl mx-auto p-6 space-y-6">
+      <!-- Run guard banner -->
+      <div
+        id="runGuardBanner"
+        class="hidden fixed top-0 left-0 right-0 z-50 bg-amber-100 border-b border-amber-300 text-amber-900"
+      >
+        <div
+          class="max-w-6xl mx-auto px-4 py-2 text-sm flex items-center gap-2"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9 6h2v6H9V6zm0 8h2v2H9v-2z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <span>Run in progress. Do not close or reload this tab.</span>
+        </div>
+      </div>
+      <!-- Header -->
+      <header
+        class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"
+      >
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">
+            Wyoming LLC Filing Bot
+          </h1>
+          <p class="text-gray-600">
+            Upload a CSV, run the bot, and monitor progress.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span
+            id="runStatus"
+            class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-gray-200 text-gray-700"
+            >Idle</span
+          >
+        </div>
+      </header>
+
+      <!-- Controls -->
+      <section
+        class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5"
+      >
+        <div
+          class="flex flex-col sm:flex-row sm:items-center gap-3 justify-between"
+        >
+          <div class="flex items-center gap-3">
+            <label
+              for="fileCsv"
+              class="inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 cursor-pointer transition"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4 opacity-80"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M3 16a2 2 0 002 2h10a2 2 0 002-2v-5a1 1 0 112 0v5a4 4 0 01-4 4H5a4 4 0 01-4-4V8a1 1 0 112 0v8z"
+                  clip-rule="evenodd"
+                />
+                <path
+                  fill-rule="evenodd"
+                  d="M7 5a1 1 0 011-1h1V2a1 1 0 112 0v2h1a1 1 0 110 2h-1v2a1 1 0 11-2 0V6H8a1 1 0 01-1-1z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              <span>Upload CSV</span>
+            </label>
+            <input id="fileCsv" type="file" accept=".csv" class="hidden" />
+            <span id="csvName" class="text-sm text-gray-600"></span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button
+              id="btnStart"
+              class="inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition"
+              disabled
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4 opacity-90"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path d="M6 4l10 6-10 6V4z" />
+              </svg>
+              <span>Start Run</span>
+            </button>
+            <button
+              id="btnStop"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition hidden"
+            >
+              <!-- x-circle -->
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4 opacity-90"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              <span>Stop</span>
+            </button>
+            <div
+              id="spinner"
+              class="hidden h-5 w-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"
+            ></div>
+          </div>
+        </div>
+        <p class="mt-2 text-xs text-gray-500">
+          Upload a file to begin a new run. CSV must include
+          <code class="px-1 rounded bg-gray-100">entity_name</code>.
+        </p>
+      </section>
+
+      <!-- === Run Overview (Dedicated Section) === -->
+      <section id="run-overview" class="w-full">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-lg font-semibold tracking-tight">Run Overview</h2>
+          <!-- optional slot for a small hint or timestamp -->
+          <span id="overviewHint" class="text-xs text-gray-500"></span>
+        </div>
+
+        <!-- Horizontal stats row (always one line; scrolls on small screens) -->
+        <div class="w-full overflow-x-auto">
+          <div class="flex flex-nowrap gap-4 w-full">
+            <div
+              class="basis-1/4 min-w-[220px] bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+            >
+              <div class="text-sm text-gray-500">Queued (from CSV)</div>
+              <div id="statQueued" class="text-2xl font-semibold">0</div>
+            </div>
+            <div
+              class="basis-1/4 min-w-[220px] bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+            >
+              <div class="text-sm text-gray-500">Completed (latest batch)</div>
+              <div id="statDone" class="text-2xl font-semibold">0</div>
+            </div>
+            <div
+              class="basis-1/4 min-w-[220px] bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+            >
+              <div class="text-sm text-gray-500">Errors</div>
+              <div id="statErr" class="text-2xl font-semibold">0</div>
+            </div>
+            <div
+              class="basis-1/4 min-w-[220px] bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+            >
+              <div class="text-sm text-gray-500">Avg Duration</div>
+              <div id="statAvg" class="text-2xl font-semibold">—</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live Log + Progress -->
+      <section class="grid lg:grid-cols-3 items-stretch gap-6">
+        <!-- Progress Timeline card -->
+        <div
+          class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 flex flex-col h-full min-h-[18rem] max-h-[50vh] md:max-h-[55vh] lg:max-h-[60vh]"
+        >
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-semibold">Progress Timeline</h2>
+            <span id="uxEntity" class="text-sm text-gray-500"></span>
+          </div>
+
+          <!-- scrollable area (matches Live Log height) -->
+          <ol
+            id="uxTimeline"
+            class="flex-1 min-h-0 overflow-auto space-y-3 pl-3 sm:pl-4"
+          ></ol>
+
+          <p id="uxHint" class="mt-3 text-xs text-gray-500">
+            Quick overview of the filing. For full details, check the Live Log.
+          </p>
+        </div>
+
+        <!-- Live Log card -->
+        <div
+          class="lg:col-span-2 bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 flex flex-col h-full min-h-[18rem] max-h-[50vh] md:max-h-[55vh] lg:max-h-[60vh]"
+        >
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-semibold">Live Log</h2>
+            <button
+              id="btnClearLog"
+              class="text-sm text-gray-500 hover:text-gray-700"
+            >
+              Clear
+            </button>
+          </div>
+
+          <!-- scrollable area (fills card, won't exceed max height) -->
+          <pre
+            id="liveLog"
+            class="flex-1 min-h-0 overflow-auto text-xs leading-5 bg-gray-900 text-white rounded-lg p-3 whitespace-pre-wrap"
+          ></pre>
+
+          <div id="afterRunLinks" class="mt-2 text-sm text-indigo-700"></div>
+        </div>
+      </section>
+
+      <!-- Queue + Recent Results -->
+      <section class="grid lg:grid-cols-[1fr_1.7fr] gap-6">
+        <div
+          class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5"
+        >
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold">Queue Preview</h3>
+            <span
+              id="queueCount"
+              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs bg-gray-100 text-gray-700"
+              >0 items</span
+            >
+          </div>
+          <div
+            class="overflow-auto max-h-[420px] border border-gray-200 rounded-lg"
+          >
+            <table class="min-w-full text-sm">
+              <thead class="sticky-th">
+                <tr class="border-b border-gray-200">
+                  <th class="text-left px-3 py-2 text-gray-600">#</th>
+                  <th class="text-left px-3 py-2 text-gray-600">Entity Name</th>
+                  <!-- <th class="text-left px-3 py-2 text-gray-600">
+                    Registered Agent
+                  </th> -->
+                </tr>
+              </thead>
+              <tbody id="queueBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Recent Results card -->
+        <div
+          class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 min-w-0 overflow-hidden"
+        >
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold">Recent Results</h3>
+            <span
+              id="resCount"
+              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs bg-gray-100 text-gray-700"
+              >0 rows</span
+            >
+          </div>
+
+          <!-- Keep your inner scroll container; now it’ll actually constrain width -->
+          <div class="border border-gray-200 rounded-lg">
+            <div
+              class="w-full max-w-full overflow-x-auto overflow-y-auto max-h-[420px]"
+            >
+              <table class="min-w-full table-auto text-sm align-middle">
+                <colgroup>
+                  <col style="min-width: 9rem" />
+                  <!-- When -->
+                  <col style="min-width: 10rem" />
+                  <!-- Entity -->
+                  <col style="min-width: 8rem" />
+                  <!-- Status -->
+                  <col style="min-width: 12rem" />
+                  <!-- Filing ID -->
+                  <col style="min-width: 12rem" />
+                  <!-- Docs -->
+                  <col style="min-width: 30rem" />
+                  <!-- Notes -->
+                </colgroup>
+                <thead class="sticky-th">
+                  <tr class="border-b border-gray-200">
+                    <th class="text-left px-3 py-2 text-gray-600">When</th>
+                    <th class="text-left px-3 py-2 text-gray-600">Entity</th>
+                    <th class="text-left px-3 py-2 text-gray-600">Status</th>
+                    <th class="text-left px-3 py-2 text-gray-600">Filing ID</th>
+                    <th class="text-left px-3 py-2 text-gray-600">Docs</th>
+                    <th class="text-left px-3 py-2 text-gray-600">Notes</th>
+                  </tr>
+                </thead>
+                <tbody id="resBody" class="divide-y divide-gray-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="py-6 text-center text-sm text-gray-500">
+        Deployed mode — server handles secrets & storage.
+      </footer>
+    </div>
+
+    <script>
+      // --- state ---
+      let currentCsvPath = null;
+      let sse = null;
+      let isRunning = false;
+      let queueRows = [];
+      let doneCount = 0;
+      let errCount = 0;
+      let queuePollTimer = null;
+      let _qpTimer = null;
+      let RUN_GUARDS_INSTALLED = false;
+      let RUN_GUARDS_ENABLED = false;
+      let DEFAULTS = { registered_agent_name: "" };
+      let _pressTimer;
+      let autoScrollTimeline = true; // follow new events unless user scrolls up
+      // Friendly UX state (per current entity)
+      let ux = {
+        entity: "",
+        stages: new Map(), // stage -> {items: [{msg, level, at}], lastLevel}
+      };
+
+      // --- els ---
+      const csvInput = document.getElementById("fileCsv");
+      const csvName = document.getElementById("csvName");
+      const btnStart = document.getElementById("btnStart");
+      const btnStop = document.getElementById("btnStop");
+      const spinner = document.getElementById("spinner");
+      const runStatus = document.getElementById("runStatus");
+      const liveLog = document.getElementById("liveLog");
+      const btnClear = document.getElementById("btnClearLog");
+      const queueBody = document.getElementById("queueBody");
+      const queueCount = document.getElementById("queueCount");
+      const statQueued = document.getElementById("statQueued");
+      const resBody = document.getElementById("resBody");
+      const resCount = document.getElementById("resCount");
+      const statDone = document.getElementById("statDone");
+      const statErr = document.getElementById("statErr");
+      const statAvg = document.getElementById("statAvg");
+      const afterRunLinks = document.getElementById("afterRunLinks");
+      const uxTimeline = document.getElementById("uxTimeline");
+      const uxEntity = document.getElementById("uxEntity");
+      const STATUS = {
+        start: {
+          label: "In progress",
+          dot: "bg-blue-500",
+          ring: "ring-blue-200",
+          pill: "bg-blue-100 text-blue-700",
+        },
+        success: {
+          label: "Completed",
+          dot: "bg-emerald-500",
+          ring: "ring-emerald-200",
+          pill: "bg-emerald-100 text-emerald-700",
+        },
+        error: {
+          label: "Needs attention",
+          dot: "bg-rose-500",
+          ring: "ring-rose-200",
+          pill: "bg-rose-100 text-rose-700",
+        },
+        info: {
+          label: "Info",
+          dot: "bg-slate-400",
+          ring: "ring-slate-200",
+          pill: "bg-slate-100 text-slate-700",
+        },
+        skipped: {
+          label: "Skipped",
+          dot: "bg-amber-500",
+          ring: "ring-amber-200",
+          pill: "bg-amber-100 text-amber-700",
+        },
+      };
+
+      function setRunning(v) {
+        isRunning = v;
+        btnStart.disabled = !currentCsvPath || v;
+        btnStop.classList.toggle("hidden", !v);
+        btnStop.disabled = false;
+        btnStop.querySelector("span").textContent = "Stop";
+        spinner.classList.toggle("hidden", !v);
+        runStatus.textContent = v ? "Running" : "Idle";
+        runStatus.className = v
+          ? "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700"
+          : "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-gray-200 text-gray-700";
+        toggleRunGuards(v);
+      }
+
+      function appendLog(line) {
+        liveLog.textContent += line + "\n";
+        liveLog.scrollTop = liveLog.scrollHeight;
+      }
+
+      function badge(status) {
+        const s = (status || "").toUpperCase();
+        if (s === "SUCCESS")
+          return '<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-700">SUCCESS</span>';
+        if (s === "ERROR")
+          return '<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-red-100 text-red-700">ERROR</span>';
+        if (s === "SKIPPED")
+          return '<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-amber-100 text-amber-700">SKIPPED</span>';
+        return `<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-gray-100 text-gray-700">${
+          status || "—"
+        }</span>`;
+      }
+
+      // Replace your toWeb() with this:
+      function toWeb(p) {
+        if (!p) return "";
+        // absolute path containing /output/
+        const ix = p.indexOf("/output/");
+        if (ix >= 0) return p.slice(ix);
+
+        // relative "output/..."
+        if (p.startsWith("output/")) return "/" + p;
+
+        // bare filename -> assume it's inside /output
+        if (!p.includes("/") && p) return "/output/" + p;
+
+        // already a web path or something else
+        return p.startsWith("/") ? p : "/" + p;
+      }
+
+      function renderQueue(rows) {
+        queueBody.innerHTML = rows
+          .map((r, i) => {
+            const ent = escapeHtml(
+              cleanEntity(r.entity_name || r.entity || "—")
+            );
+            const ra = escapeHtml(
+              cleanAgent(
+                r.registered_agent_name || DEFAULTS.registered_agent_name || "—"
+              )
+            );
+            return `
+          <tr class="border-b border-gray-100" data-i="${i}">
+            <td class="px-3 py-2 text-gray-500">${i + 1}</td>
+            <td class="px-3 py-2 font-medium break-words">${ent}</td>
+          </tr>
+        `;
+          })
+          .join("");
+        queueCount.textContent = `${rows.length} item${
+          rows.length === 1 ? "" : "s"
+        }`;
+        statQueued.textContent = rows.length;
+      }
+
+      function wireEventStream(es) {
+        es.onmessage = (evt) => {
+          const line = evt.data || "";
+          appendLog(line);
+
+          // Structured events
+          if (line.startsWith("[[EVT]] ")) {
+            try {
+              const ev = JSON.parse(line.slice(8));
+
+              if (ev.type === "start") {
+                highlightQueueRow(ev.idx - 1);
+                resetUX(ev.entity || "");
+              } else if (ev.type === "finish") {
+                // current item finished (success or error)
+                removeFromQueue(ev.idx - 1, ev.entity);
+                addRecentResult(ev);
+              } else if (ev.type === "stopping") {
+                // soft-stop requested
+                runStatus.textContent = "Stopping…";
+                runStatus.className =
+                  "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-amber-100 text-amber-700";
+                // optional: reflect on the Stop button if present
+                const btnStop = document.getElementById("btnStop");
+                if (btnStop) {
+                  btnStop.disabled = true;
+                  const lbl = btnStop.querySelector("span");
+                  if (lbl) lbl.textContent = "Stopping…";
+                }
+              } else if (ev.type === "aborted") {
+                // aborted mid-run (hard stop or soft stop after current)
+                setRunning(false);
+                stopQueuePolling?.();
+                runStatus.textContent = "Stopped";
+                runStatus.className =
+                  "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-rose-100 text-rose-700";
+                try {
+                  es.close();
+                } catch {}
+              } else if (ev.type === "batch_done") {
+                // normal completion or stopped-after-partial
+                setRunning(false);
+                clearQueueUI();
+                stopQueuePolling?.();
+                loadLatestResults();
+
+                if (ev.results_path) {
+                  const name = (ev.results_path.split("/").pop() || "").trim();
+                  afterRunLinks.innerHTML = `<a class="text-indigo-700 underline" href="/download/${name}">Download latest results</a>`;
+                }
+
+                if (ev.aborted) {
+                  runStatus.textContent = "Stopped";
+                  runStatus.className =
+                    "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-rose-100 text-rose-700";
+                }
+              }
+            } catch {}
+          }
+
+          // Run metadata
+          if (line.startsWith("[[RUN]] ")) {
+            const meta = JSON.parse(line.slice(7));
+            window.__currentRunId = meta.id;
+
+            // 🚀 New: start live queue polling for this run
+            if (currentCsvPath) {
+              startQueuePolling(currentCsvPath, meta.id);
+            }
+          }
+
+          // Fallback marker when main writes the path directly
+          if (line.startsWith(">>> Results written to: ")) {
+            setRunning(false);
+            clearQueueUI();
+            stopQueuePolling?.();
+            const p = line.replace(">>> Results written to: ", "").trim();
+            const name = p.split("/").pop();
+            afterRunLinks.innerHTML = `<a class="text-indigo-700 underline" href="/download/${name}">Download latest results</a>`;
+            loadLatestResults();
+          }
+
+          // UX timeline entries
+          if (line.startsWith("[[UX]] ")) {
+            try {
+              const u = JSON.parse(line.slice(7));
+              pushUX(
+                u.stage || "Step",
+                u.message || "",
+                u.level || "info",
+                u.entity || ""
+              );
+            } catch {}
+          }
+        };
+
+        es.onerror = () => {
+          appendLog("[stream closed]");
+          // If the server closed because the run ended or stopped, setRunning(false) is OK.
+          setRunning(false);
+          try {
+            es.close();
+          } catch {}
+        };
+      }
+
+      function highlightQueueRow(idx) {
+        const tr = document.querySelector(`#queueBody tr[data-i="${idx}"]`);
+        if (tr) tr.classList.add("bg-amber-50");
+      }
+
+      function removeFromQueue(idx, entityName) {
+        if (idx >= 0 && idx < queueRows.length) {
+          queueRows.splice(idx, 1);
+        } else {
+          const i = queueRows.findIndex(
+            (r) =>
+              cleanEntity(r.entity_name || "") === cleanEntity(entityName || "")
+          );
+          if (i >= 0) queueRows.splice(i, 1);
+        }
+        renderQueue(queueRows);
+      }
+
+      function addRecentResult(ev) {
+        if (ev.status === "SUCCESS") doneCount++;
+        if (ev.status === "ERROR") errCount++;
+        statDone.textContent = doneCount;
+        statErr.textContent = errCount;
+
+        const rec = ev.receipt_file
+          ? docPill(ev.receipt_file, "Receipt", "slate")
+          : "";
+        const reg = ev.registration_file
+          ? docPill(ev.registration_file, "Registration", "indigo")
+          : "";
+        const cgs = ev.cgs_file ? docPill(ev.cgs_file, "CGS", "violet") : "";
+        const gsc = ev.gsc_file ? docPill(ev.gsc_file, "GSC", "cyan") : "";
+        const docs =
+          [rec, reg, cgs, gsc].filter(Boolean).join(pillSep()) || "—";
+
+        const now = new Date().toISOString().slice(0, 16).replace("T", " ");
+        const note = cleanNote(ev.notes);
+        const entityClean = cleanEntity(ev.entity);
+        const rowHtml = `
+        <tr class="hover:bg-gray-50">
+        <td class="px-3 py-2 text-gray-500 tabular-nums">${now}</td>
+        <td class="px-3 py-2 text-left font-medium whitespace-normal break-words [overflow-wrap:anywhere]">${escapeHtml(
+          entityClean || "—"
+        )}</td>
+        <td class="px-3 py-2">${badge(ev.status)}</td>
+        <td class="px-3 py-2">${escapeHtml(ev.filing_id || "—")}</td>
+        <td class="px-3 py-2"><div class="flex flex-wrap gap-1 items-center">${
+          docs || "—"
+        }</div></td>
+        <td class="px-3 py-2 text-gray-700 text-left whitespace-normal break-words">${
+          note ? escapeHtml(note) : "—"
+        }</td>
+        </tr>`;
+        resBody.insertAdjacentHTML("afterbegin", rowHtml);
+
+        const rows = resBody.querySelectorAll("tr").length;
+        resCount.textContent = `${rows} row${rows === 1 ? "" : "s"}`;
+      }
+
+      function scrollTimeline(force = false) {
+        if (!uxTimeline) return;
+        if (force || autoScrollTimeline) {
+          uxTimeline.scrollTo({
+            top: uxTimeline.scrollHeight,
+            behavior: "smooth",
+          });
+        }
+      }
+
+      function setupTimelineAutoscroll() {
+        // make the timeline card a positioning context for our button
+        const card = uxTimeline.parentElement; // the white card wrapping the <ol>
+        card.classList.add("relative");
+
+        // floating "Jump to live" button
+        const jumpBtn = document.createElement("button");
+        jumpBtn.id = "btnJumpLive";
+        jumpBtn.className =
+          "hidden absolute bottom-3 right-3 text-xs px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-700 shadow ring-1 ring-amber-200";
+        jumpBtn.textContent = "Jump to live";
+        jumpBtn.addEventListener("click", () => {
+          autoScrollTimeline = true;
+          scrollTimeline(true);
+        });
+        card.appendChild(jumpBtn);
+
+        // if user scrolls up: pause follow; when near bottom: resume follow
+        uxTimeline.addEventListener("scroll", () => {
+          const nearBottom =
+            uxTimeline.scrollTop + uxTimeline.clientHeight >=
+            uxTimeline.scrollHeight - 24; // px threshold
+          autoScrollTimeline = nearBottom;
+          jumpBtn.classList.toggle("hidden", autoScrollTimeline);
+        });
+      }
+
+      async function startQueuePolling(csvPath, runId) {
+        stopQueuePolling();
+
+        const tick = async () => {
+          try {
+            const qp = await fetch(
+              `/queue-preview?csv_path=${encodeURIComponent(
+                csvPath
+              )}&run_id=${encodeURIComponent(runId)}`
+            ).then((r) => r.json());
+
+            console.log(qp);
+
+            // If the server also includes the default in this payload, capture it
+            if (
+              !DEFAULTS.registered_agent_name &&
+              qp.default_registered_agent_name
+            ) {
+              DEFAULTS.registered_agent_name = cleanAgent(
+                qp.default_registered_agent_name
+              );
+            }
+
+            // Apply fallback RA per row for display
+            queueRows = (qp.preview || []).map((r) => ({
+              ...r,
+              registered_agent_name:
+                r.registered_agent_name || DEFAULTS.registered_agent_name,
+            }));
+
+            renderQueue(queueRows);
+            statQueued.textContent = qp.remaining ?? queueRows.length;
+            if (qp.current_idx) highlightQueueRow(0);
+          } catch {}
+          _qpTimer = setTimeout(tick, 3000);
+        };
+        tick();
+      }
+
+      function stopQueuePolling() {
+        if (_qpTimer) {
+          clearTimeout(_qpTimer);
+          _qpTimer = null;
+        }
+      }
+
+      function installRunGuardsOnce() {
+        if (RUN_GUARDS_INSTALLED) return;
+        RUN_GUARDS_INSTALLED = true;
+
+        // Warn on close/reload
+        window.addEventListener("beforeunload", (e) => {
+          if (!RUN_GUARDS_ENABLED) return;
+          // Required for Chrome/Safari to show native prompt
+          e.preventDefault();
+          e.returnValue = "";
+        });
+
+        // Block F5 / Cmd/Ctrl+R while running
+        document.addEventListener(
+          "keydown",
+          (e) => {
+            if (!RUN_GUARDS_ENABLED) return;
+            const isReloadCombo = e.key === "r" && (e.metaKey || e.ctrlKey);
+            if (e.key === "F5" || isReloadCombo) {
+              e.preventDefault();
+              e.stopPropagation();
+              // Optional feedback:
+              // alert("Run in progress — reloading is disabled until it finishes.");
+            }
+          },
+          { capture: true }
+        );
+
+        // Trap Back/Forward buttons
+        // We push a dummy state and immediately push another whenever popstate fires.
+        function pushStateGuard() {
+          try {
+            history.pushState({ guard: true }, "", location.href);
+          } catch {}
+        }
+        pushStateGuard();
+        window.addEventListener("popstate", (e) => {
+          if (!RUN_GUARDS_ENABLED) return; // allow normal nav when idle
+          pushStateGuard();
+          // Optional feedback:
+          // alert("Run in progress — navigation is disabled until it finishes.");
+        });
+
+        // Soft-block link clicks that would navigate away
+        document.addEventListener(
+          "click",
+          (e) => {
+            if (!RUN_GUARDS_ENABLED) return;
+            const a = e.target.closest && e.target.closest("a[href]");
+            if (!a) return;
+            const href = a.getAttribute("href") || "";
+            if (!href) return;
+            // allow same-page anchors
+            if (href.startsWith("#")) return;
+            // block external / full nav while running
+            e.preventDefault();
+            e.stopPropagation();
+          },
+          { capture: true }
+        );
+      }
+
+      function toggleRunGuards(enable) {
+        RUN_GUARDS_ENABLED = !!enable;
+        const banner = document.getElementById("runGuardBanner");
+        banner.classList.toggle("hidden", !enable);
+        if (enable) installRunGuardsOnce();
+      }
+
+      function clearQueueUI() {
+        queueRows = [];
+        renderQueue(queueRows);
+        document.getElementById("statQueued").textContent = "0";
+      }
+
+      // Render friendly timeline
+      function renderUX() {
+        uxEntity.textContent = ux.entity
+          ? `For: ${cleanEntity(ux.entity)}`
+          : "";
+
+        const rows = [];
+        const entries = Array.from(ux.stages.entries());
+
+        for (let i = 0; i < entries.length; i++) {
+          const [stage, data] = entries[i];
+          const level = data.lastLevel || "info";
+          const cfg = STATUS[level] || STATUS.info;
+
+          const itemsHtml = (data.items || [])
+            .map(
+              (it) => `
+                <div class="text-xs text-slate-600">
+                <span class="tabular-nums text-slate-400 mr-1">${fmtTime(
+                  it.at
+                )}</span>
+                ${escapeHtml(it.msg)}
+                </div>
+            `
+            )
+            .join("");
+
+          const isCurrent = level === "start";
+          const dotPulse = isCurrent ? "animate-pulse" : "";
+          const stageTint = isCurrent ? "text-slate-900" : "text-slate-800";
+
+          rows.push(`
+            <li class="relative pl-7 py-3">
+                <!-- dot -->
+                <span class="absolute left-1 top-4 h-3 w-3 rounded-full ${
+                  cfg.dot
+                } ring-2 ${cfg.ring} ${dotPulse}"></span>
+                <!-- connector line (to next step) -->
+                ${
+                  i < entries.length - 1
+                    ? '<span class="absolute left-2 top-7 bottom-[-6px] w-px bg-slate-200"></span>'
+                    : ""
+                }
+
+                <div class="flex items-center gap-2">
+                ${statusPill(level)}
+                <div class="font-medium ${stageTint}">${escapeHtml(stage)}</div>
+                </div>
+
+                <div class="mt-1">
+                ${
+                  itemsHtml ||
+                  '<div class="text-xs text-slate-400 italic">Waiting…</div>'
+                }
+                </div>
+            </li>
+            `);
+        }
+
+        uxTimeline.innerHTML =
+          rows.join("") ||
+          `<li class="text-sm text-slate-500">No activity yet.</li>`;
+
+        scrollTimeline(); // keep following while user hasn't scrolled up
+      }
+
+      function resetUX(entityName = "") {
+        ux = { entity: entityName || "", stages: new Map() };
+        renderUX();
+
+        autoScrollTimeline = true;
+        scrollTimeline(true);
+      }
+
+      function pushUX(stage, message, level, entityName) {
+        if (entityName && (!ux.entity || ux.entity !== entityName)) {
+          // Rollover to a new entity
+          resetUX(entityName);
+        }
+        if (!ux.stages.has(stage))
+          ux.stages.set(stage, { items: [], lastLevel: "info" });
+        const s = ux.stages.get(stage);
+        s.items.push({ msg: message, level, at: Date.now() });
+        s.lastLevel = level;
+        ux.stages.set(stage, s);
+        renderUX();
+      }
+
+      function statusPill(level) {
+        const cfg = STATUS[level] || STATUS.info;
+        return `<span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${cfg.pill}">
+            ${cfg.label}
+        </span>`;
+      }
+
+      function fmtTime(ms) {
+        const d = new Date(ms || Date.now());
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      }
+
+      function escapeHtml(s) {
+        return String(s || "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            }[c])
+        );
+      }
+
+      // --- Pretty "pill" links for docs ---
+      function iconDoc() {
+        // small inline SVG doc icon (Tailwind inherits current text color)
+        return `<svg aria-hidden="true" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M4 3a2 2 0 0 1 2-2h5.586a2 2 0 0 1 1.414.586l3.414 3.414A2 2 0 0 1 17 6.414V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V3z"/>
+            </svg>`;
+      }
+
+      // color presets: indigo (default), violet (CGS), cyan (GSC)
+      function pillClasses(variant = "indigo") {
+        const m = {
+          indigo: [
+            "bg-indigo-50",
+            "text-indigo-700",
+            "ring-indigo-200",
+            "hover:bg-indigo-100",
+          ],
+          violet: [
+            "bg-violet-50",
+            "text-violet-700",
+            "ring-violet-200",
+            "hover:bg-violet-100",
+          ],
+          cyan: [
+            "bg-cyan-50",
+            "text-cyan-700",
+            "ring-cyan-200",
+            "hover:bg-cyan-100",
+          ],
+          slate: [
+            "bg-slate-50",
+            "text-slate-700",
+            "ring-slate-200",
+            "hover:bg-slate-100",
+          ],
+        }[variant] || [
+          "bg-indigo-50",
+          "text-indigo-700",
+          "ring-indigo-200",
+          "hover:bg-indigo-100",
+        ];
+        return `inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${m.join(
+          " "
+        )}`;
+      }
+
+      function docPill(path, label, variant = "indigo") {
+        const href = toWeb(path || "");
+        if (!href) return "";
+        const title = `${label} — opens in new tab`;
+        return `<a class="${pillClasses(
+          variant
+        )}" href="${href}" target="_blank" rel="noopener noreferrer" title="${title}">
+            ${iconDoc()} <span>${label}</span>
+        </a>`;
+      }
+
+      // small separator between pills
+      function pillSep() {
+        return `<span class="inline-block w-1.5"></span>`;
+      }
+
+      function cleanNote(raw) {
+        if (raw == null) return "";
+        let s = String(raw);
+
+        // strip surrounding quotes if the string was quoted
+        s = s.replace(/^\s*["'](.*)["']\s*$/s, "$1");
+
+        // normalize & trim
+        s = s.replace(/\u00A0/g, " "); // nbsp -> space
+        s = s
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .join(" ");
+        s = s.replace(/\s{2,}/g, " ").trim();
+        return s;
+      }
+
+      function cleanEntity(raw) {
+        if (raw == null) return "";
+        let s = String(raw);
+
+        // strip surrounding quotes if present
+        s = s.replace(/^\s*["'](.*)["']\s*$/s, "$1");
+
+        // normalize spaces, trim each line, collapse runs
+        s = s.replace(/\u00A0/g, " "); // nbsp -> space
+        s = s
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .join(" ");
+        s = s.replace(/\s{2,}/g, " ").trim();
+
+        return s;
+      }
+
+      function cleanAgent(raw) {
+        if (raw == null) return "";
+        let s = String(raw);
+        s = s.replace(/^\s*["'](.*)["']\s*$/s, "$1"); // strip wrapping quotes
+        s = s.replace(/\u00A0/g, " "); // nbsp -> space
+        s = s
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .join(" ");
+        s = s.replace(/\s{2,}/g, " ").trim();
+        return s;
+      }
+
+      function clearTimeline() {
+        // wipe UX state + UI immediately
+        ux = { entity: "", stages: new Map() };
+        uxTimeline.innerHTML = ""; // no placeholder, truly empty
+        uxEntity.textContent = ""; // clear "For: …"
+        autoScrollTimeline = true; // resume follow when new events arrive
+      }
+
+      function clearRecentResultsUI() {
+        resBody.innerHTML = "";
+        resCount.textContent = "0 rows";
+        statDone.textContent = "0";
+        statErr.textContent = "0";
+        statAvg.textContent = "—";
+      }
+
+      async function loadLatestResults() {
+        try {
+          const meta = await fetch("/latest-results").then((r) => r.json());
+          if (!meta.file) {
+            resBody.innerHTML = "";
+            resCount.textContent = "0 rows";
+            statDone.textContent = "0";
+            statErr.textContent = "0";
+            statAvg.textContent = "—";
+            return;
+          }
+          const csvText = await fetch(meta.file).then((r) => r.text());
+          const parsed = Papa.parse(csvText, {
+            header: true,
+            skipEmptyLines: true,
+          });
+          const rows = parsed.data || [];
+
+          resBody.innerHTML = rows
+            .map((r) => {
+              const recP = toWeb(r.receipt_file || "");
+              const regP = toWeb(r.registration_file || "");
+              const cgsP = toWeb(r.cgs_file || "");
+              const gscP = toWeb(r.gsc_file || "");
+
+              const rec = recP ? docPill(recP, "Receipt", "slate") : "";
+              const reg = regP ? docPill(regP, "Registration", "indigo") : "";
+              const cgs = cgsP ? docPill(cgsP, "CGS", "violet") : "";
+              const gsc = gscP ? docPill(gscP, "GSC", "cyan") : "";
+
+              const docs =
+                [rec, reg, cgs, gsc].filter(Boolean).join(pillSep()) || "—";
+
+              const note = cleanNote(r.notes);
+              const ent = cleanEntity(r.entity_name || r.entity || "—");
+
+              return `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-3 py-2 text-gray-500 tabular-nums">${escapeHtml(
+                      r.started_at || "—"
+                    )}</td>
+                    <td class="px-3 py-2 text-left font-medium whitespace-normal break-words [overflow-wrap:anywhere]">${escapeHtml(
+                      ent
+                    )}</td>
+                    <td class="px-3 py-2">${badge(r.status)}</td>
+                    <td class="px-3 py-2">${escapeHtml(r.filing_id || "—")}</td>
+                    <td class="px-3 py-2">
+                    <div class="flex flex-wrap gap-1 items-center">${docs}</div>
+                    </td>
+                    <td class="px-3 py-2 text-gray-700 text-left whitespace-normal break-words">
+                    ${note ? escapeHtml(note) : "—"}
+                    </td>
+                </tr>`;
+            })
+            .join("");
+          resCount.textContent = `${rows.length} row${
+            rows.length === 1 ? "" : "s"
+          }`;
+          const done = rows.filter(
+            (r) => (r.status || "").toUpperCase() === "SUCCESS"
+          ).length;
+          const errs = rows.filter(
+            (r) => (r.status || "").toUpperCase() === "ERROR"
+          ).length;
+          statDone.textContent = done;
+          statErr.textContent = errs;
+
+          const durations = rows
+            .map((r) => parseFloat(r.elapsed_s || "0"))
+            .filter((x) => !isNaN(x) && x > 0);
+          if (durations.length) {
+            const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+            const mm = String(Math.floor(avg / 60)).padStart(2, "0");
+            const ss = String(Math.floor(avg % 60)).padStart(2, "0");
+            statAvg.textContent = `${mm}:${ss}`;
+          } else {
+            statAvg.textContent = "—";
+          }
+        } catch {}
+      }
+
+      async function stopRun(soft = true) {
+        await fetch(soft ? "/stop-run" : "/stop-run-now", { method: "POST" });
+      }
+
+      // Upload CSV (auto-start)
+      csvInput.addEventListener("change", async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (isRunning) {
+          alert(
+            "A run is already in progress. Stop it before uploading a new CSV."
+          );
+          e.target.value = "";
+          return;
+        }
+
+        csvName.textContent = file.name;
+
+        // reset stats for a new batch
+        doneCount = 0;
+        errCount = 0;
+        statDone.textContent = "0";
+        statErr.textContent = "0";
+
+        const fd = new FormData();
+        fd.append("file", file, file.name);
+
+        const res = await fetch("/upload-csv", { method: "POST", body: fd });
+        if (!res.ok) {
+          alert("Upload failed.");
+          return;
+        }
+        const data = await res.json();
+
+        // after successful /upload-csv
+        queueRows = (data.preview || []).map((r) => ({
+          ...r,
+          registered_agent_name:
+            r.registered_agent_name || DEFAULTS.registered_agent_name,
+        }));
+        renderQueue(queueRows);
+        statQueued.textContent = queueRows.length;
+
+        currentCsvPath = data.csv_path;
+        btnStart.disabled = false; // <-- user must click Start
+        btnStart.classList.remove("hidden"); // make sure visible
+
+        liveLog.textContent = "";
+        afterRunLinks.innerHTML = "";
+
+        e.target.value = "";
+      });
+
+      // Manual Start (optional)
+      btnStart.addEventListener("click", () => {
+        if (!currentCsvPath || isRunning) return;
+
+        if (sse) {
+          try {
+            sse.close();
+          } catch {}
+        }
+        liveLog.textContent = "";
+        afterRunLinks.innerHTML = "";
+
+        clearTimeline();
+        clearRecentResultsUI();
+
+        // reset stats
+        doneCount = 0;
+        errCount = 0;
+        statDone.textContent = "0";
+        statErr.textContent = "0";
+
+        // show temporary queue placeholder, etc...
+        clearQueueUI();
+        queueBody.innerHTML = `
+      <tr><td colspan="5" class="px-3 py-3 text-sm text-slate-500">
+      Preparing queue…
+      </td></tr>
+  `;
+        statQueued.textContent = "—";
+
+        setRunning(true);
+
+        sse = new EventSource(
+          `/run?csv_path=${encodeURIComponent(currentCsvPath)}`
+        );
+        wireEventStream(sse);
+      });
+
+      btnStop.addEventListener("click", async () => {
+        btnStop.disabled = true;
+        btnStop.querySelector("span").textContent = "Stopping…";
+        runStatus.textContent = "Stopping…";
+        runStatus.className =
+          "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-amber-100 text-amber-700";
+        try {
+          await stopRun(true);
+        } catch {}
+      });
+
+      btnStop.addEventListener("mousedown", () => {
+        if (btnStop.disabled) return;
+        _pressTimer = setTimeout(async () => {
+          if (
+            confirm("Force stop immediately? Current entity may be partial.")
+          ) {
+            btnStop.disabled = true;
+            runStatus.textContent = "Stopping now…";
+            runStatus.className =
+              "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-rose-100 text-rose-700";
+            await stopRun(false); // hard stop
+          }
+        }, 800);
+      });
+      ["mouseup", "mouseleave"].forEach((evt) =>
+        btnStop.addEventListener(evt, () => clearTimeout(_pressTimer))
+      );
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !btnStop.disabled) btnStop.click();
+      });
+
+      // Clear log
+      btnClear.addEventListener("click", () => {
+        liveLog.textContent = "";
+      });
+
+      // --- On load: reattach to live tail and rebuild queue
+      (async function boot() {
+        try {
+          setupTimelineAutoscroll();
+          const ar = await fetch("/active-run").then((r) => r.json());
+          if (ar && ar.running && ar.run_id) {
+            setRunning(true);
+
+            // 1/3: figure out csv path to rebuild queue
+            let csvPath = ar.csv_path;
+            if (!csvPath) {
+              try {
+                const meta = await fetch(`/run-meta/${ar.run_id}`).then((r) =>
+                  r.json()
+                );
+                csvPath = meta.csv_path;
+              } catch {}
+            }
+
+            // 2/3: ask the server for a queue snapshot right now
+            if (csvPath) {
+              const qp = await fetch(
+                `/queue-preview?csv_path=${encodeURIComponent(
+                  csvPath
+                )}&run_id=${encodeURIComponent(ar.run_id)}`
+              ).then((r) => r.json());
+              queueRows = qp.preview || [];
+              renderQueue(queueRows);
+              document.getElementById("statQueued").textContent =
+                qp.remaining ?? queueRows.length;
+              if (qp.current_idx) highlightQueueRow(qp.current_idx - 1);
+
+              // start polling the queue (keeps “Queued” + table fresh during the run)
+              startQueuePolling(csvPath, ar.run_id);
+            }
+
+            // 3/3: reattach to live log tail
+            if (sse)
+              try {
+                sse.close();
+              } catch {}
+            sse = new EventSource(`/stream/${ar.run_id}`);
+            wireEventStream(sse);
+
+            loadLatestResults();
+          } else {
+            setRunning(false);
+            loadLatestResults();
+            stopQueuePolling();
+          }
+        } catch {
+          setRunning(false);
+          loadLatestResults();
+          stopQueuePolling();
+        }
+      })();
+
+      //   startQueuePolling();
+
+      // Load latest results on open
+      loadLatestResults();
+    </script>
+  </body>
+</html>
