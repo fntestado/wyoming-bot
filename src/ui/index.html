@@ -240,6 +240,7 @@
           <!-- scrollable area (fills card, won't exceed max height) -->
           <pre
             id="liveLog"
+            aria-live="polite"
             class="flex-1 min-h-0 overflow-auto text-xs leading-5 bg-gray-900 text-white rounded-lg p-3 whitespace-pre-wrap"
           ></pre>
 
@@ -282,13 +283,107 @@
         <div
           class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5 min-w-0 overflow-hidden"
         >
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="font-semibold">Recent Results</h3>
-            <span
-              id="resCount"
-              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs bg-gray-100 text-gray-700"
-              >0 rows</span
-            >
+          <div
+            class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3"
+          >
+            <!-- Left cluster: title + count + subtext -->
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <h3 class="font-semibold" id="recentResultsHeading">
+                  Recent Results
+                </h3>
+                <span
+                  id="resCount"
+                  aria-live="polite"
+                  class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs bg-gray-100 text-gray-700"
+                  >0 rows</span
+                >
+              </div>
+              <p id="recentResultsSub" class="text-xs text-gray-500">
+                (last 7 days)
+              </p>
+            </div>
+
+            <!-- Right cluster: selector + actions -->
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="relative">
+                <label for="runSelect" class="sr-only">Select run</label>
+                <select
+                  id="runSelect"
+                  class="appearance-none border border-gray-300 rounded-lg bg-white text-sm pl-3 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="__combined__">Last 7 days (combined)</option>
+                </select>
+                <!-- Caret -->
+                <svg
+                  class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                <!-- Tiny spinner (shown while loading runs) -->
+                <div
+                  id="runSelectSpinner"
+                  class="hidden absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin"
+                  aria-label="Loading runs"
+                ></div>
+              </div>
+
+              <button
+                id="refreshRunsBtn"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                title="Refresh run list"
+                type="button"
+              >
+                <svg
+                  class="h-4 w-4"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M3 10a7 7 0 0111.95-4.95l.9-.9a1 1 0 111.42 1.42l-2.83 2.83a1 1 0 01-1.42 0L10.59 4.7A1 1 0 0112 3.3L14.3 5.6A9 9 0 103 10z"
+                  />
+                </svg>
+                Refresh
+              </button>
+
+              <a
+                id="runDownloadCsv"
+                class="hidden inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                href="#"
+                target="_blank"
+                rel="noopener"
+              >
+                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    d="M3 3a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H9l-4 4v-4H5a2 2 0 01-2-2V3z"
+                  />
+                </svg>
+                CSV
+              </a>
+
+              <a
+                id="runDownloadZip"
+                class="hidden inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                href="#"
+                target="_blank"
+                rel="noopener"
+              >
+                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    d="M6 2a2 2 0 00-2 2v12l4-2 4 2 4-2V4a2 2 0 00-2-2H6z"
+                  />
+                </svg>
+                Docs (.zip)
+              </a>
+            </div>
           </div>
 
           <!-- Keep your inner scroll container; now it’ll actually constrain width -->
@@ -374,6 +469,10 @@
       const afterRunLinks = document.getElementById("afterRunLinks");
       const uxTimeline = document.getElementById("uxTimeline");
       const uxEntity = document.getElementById("uxEntity");
+      const RECENT_DAYS = 7;
+      const recentResultsSub = document.getElementById("recentResultsSub");
+      const runSelectSpinner = document.getElementById("runSelectSpinner");
+      const refreshRunsBtn = document.getElementById("refreshRunsBtn");
       const STATUS = {
         start: {
           label: "In progress",
@@ -442,6 +541,7 @@
       // Replace your toWeb() with this:
       function toWeb(p) {
         if (!p) return "";
+        p = String(p).trim().replace(/\\/g, "/"); // normalize windows paths
         // absolute path containing /output/
         const ix = p.indexOf("/output/");
         if (ix >= 0) return p.slice(ix);
@@ -453,7 +553,7 @@
         if (!p.includes("/") && p) return "/output/" + p;
 
         // already a web path or something else
-        return p.startsWith("/") ? p : "/" + p;
+        return p.startsWith("/output/") ? p : "";
       }
 
       function renderQueue(rows) {
@@ -525,7 +625,11 @@
                 setRunning(false);
                 clearQueueUI();
                 stopQueuePolling?.();
-                loadLatestResults();
+
+                // small grace period so the results file is flushed
+                setTimeout(async () => {
+                  await populateRunDropdown(RECENT_DAYS, true);
+                }, 300);
 
                 if (ev.results_path) {
                   const name = (ev.results_path.split("/").pop() || "").trim();
@@ -560,7 +664,7 @@
             const p = line.replace(">>> Results written to: ", "").trim();
             const name = p.split("/").pop();
             afterRunLinks.innerHTML = `<a class="text-indigo-700 underline" href="/download/${name}">Download latest results</a>`;
-            loadLatestResults();
+            loadRecentResults();
           }
 
           // UX timeline entries
@@ -683,6 +787,319 @@
         });
       }
 
+      // factor out your row rendering so both loaders can use it
+      function renderResultsRows(rows) {
+        resBody.innerHTML = rows
+          .map((r) => {
+            const recP = toWeb(r.receipt_file || "");
+            const regP = toWeb(r.registration_file || "");
+            const cgsP = toWeb(r.cgs_file || "");
+            const gscP = toWeb(r.gsc_file || "");
+
+            const rec = recP ? docPill(recP, "Receipt", "slate") : "";
+            const reg = regP ? docPill(regP, "Registration", "indigo") : "";
+            const cgs = cgsP ? docPill(cgsP, "CGS", "violet") : "";
+            const gsc = gscP ? docPill(gscP, "GSC", "cyan") : "";
+            const docs =
+              [rec, reg, cgs, gsc].filter(Boolean).join(pillSep()) || "—";
+
+            const note = cleanNote(r.notes);
+            const ent = cleanEntity(r.entity_name || r.entity || "—");
+
+            return `
+        <tr class="hover:bg-gray-50">
+          <td class="px-3 py-2 text-gray-500 tabular-nums">${escapeHtml(
+            r.started_at || "—"
+          )}</td>
+          <td class="px-3 py-2 text-left font-medium whitespace-normal break-words [overflow-wrap:anywhere]">${escapeHtml(
+            ent
+          )}</td>
+          <td class="px-3 py-2">${badge(r.status)}</td>
+          <td class="px-3 py-2">${escapeHtml(r.filing_id || "—")}</td>
+          <td class="px-3 py-2"><div class="flex flex-wrap gap-1 items-center">${docs}</div></td>
+          <td class="px-3 py-2 text-gray-700 text-left whitespace-normal break-words">
+            ${note ? escapeHtml(note) : "—"}
+          </td>
+        </tr>`;
+          })
+          .join("");
+
+        const n = rows.length;
+        resCount.textContent = `${n} row${n === 1 ? "" : "s"}`;
+      }
+
+      async function populateRunDropdown(
+        days = RECENT_DAYS,
+        preserveSelection = true
+      ) {
+        const sel = document.getElementById("runSelect");
+        const dlCsv = document.getElementById("runDownloadCsv");
+        const dlZip = document.getElementById("runDownloadZip");
+        const sub = document.getElementById("recentResultsSub");
+        const spin = document.getElementById("runSelectSpinner");
+
+        const previous = sel.value;
+
+        // -- begin loading UI
+        sel.disabled = true;
+        sel.classList.add("opacity-60", "cursor-wait");
+        spin?.classList.remove("hidden");
+
+        try {
+          // reset options with combined first (we'll remove it if unsupported)
+          sel.innerHTML = `<option value="__combined__">Last ${days} days (combined)</option>`;
+
+          // fetch run files
+          let runs = [];
+          try {
+            runs = await fetch(
+              `/result-files?days=${encodeURIComponent(days)}`
+            ).then((r) => r.json());
+          } catch (e) {
+            console.warn("result-files failed", e);
+          }
+          if (!Array.isArray(runs)) runs = [];
+
+          // probe combined endpoint; remove the option if not available
+          let hasCombined = true;
+          try {
+            const probe = await fetch(
+              `/recent-results?days=${encodeURIComponent(days)}`
+            );
+            if (!probe.ok) {
+              sel.querySelector('option[value="__combined__"]')?.remove();
+              hasCombined = false;
+            }
+          } catch {
+            sel.querySelector('option[value="__combined__"]')?.remove();
+            hasCombined = false;
+          }
+
+          // no runs + no combined -> empty state
+          if (runs.length === 0 && !hasCombined) {
+            resBody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-sm text-slate-500">
+        No runs in the last ${days} days.
+      </td></tr>`;
+            resCount.textContent = "0 rows";
+            dlCsv.classList.add("hidden");
+            dlCsv.removeAttribute("href");
+            dlZip.classList.add("hidden");
+            dlZip.removeAttribute("href");
+            // (optional) reset stats
+            // statDone.textContent = "0"; statErr.textContent = "0"; statAvg.textContent = "—";
+            sub && (sub.textContent = `Last ${days} days`);
+            return; // nothing else to load
+          }
+
+          // populate options from /result-files
+          for (const r of runs) {
+            const opt = document.createElement("option");
+            opt.value = r.url; // e.g. /output/results_YYYY-MM-DD_HHMMSS.csv
+            opt.textContent = r.label; // e.g. "2025-09-18 174402 (12 rows)"
+            if (r.name) opt.dataset.name = r.name;
+            if (r.zip) opt.dataset.zip = r.zip;
+            sel.appendChild(opt);
+          }
+
+          // restore selection if possible
+          if (
+            preserveSelection &&
+            [...sel.options].some((o) => o.value === previous)
+          ) {
+            sel.value = previous;
+          } else if (runs.length) {
+            sel.value = runs[0].url; // newest first
+          } else if (hasCombined) {
+            sel.value = "__combined__";
+          }
+
+          // onchange (idempotent to reassign)
+          sel.onchange = async () => {
+            await loadSelectedRun();
+            // reflect current scope in the subtext
+            if (sel.value === "__combined__") {
+              sub && (sub.textContent = `Last ${days} days`);
+            } else {
+              sub &&
+                (sub.textContent =
+                  sel.options[sel.selectedIndex]?.textContent || "");
+            }
+          };
+
+          // initial load + subtext
+          await loadSelectedRun();
+          if (sel.value === "__combined__") {
+            sub && (sub.textContent = `Last ${days} days`);
+          } else {
+            sub &&
+              (sub.textContent =
+                sel.options[sel.selectedIndex]?.textContent || "");
+          }
+        } finally {
+          // -- end loading UI
+          sel.disabled = false;
+          sel.classList.remove("opacity-60", "cursor-wait");
+          spin?.classList.add("hidden");
+        }
+      }
+
+      async function loadSelectedRun() {
+        const sel = document.getElementById("runSelect");
+        const value = sel.value;
+        const dlCsv = document.getElementById("runDownloadCsv");
+        const dlZip = document.getElementById("runDownloadZip");
+
+        // Reset links
+        dlCsv.classList.add("hidden");
+        dlZip.classList.add("hidden");
+        dlCsv.removeAttribute("href");
+        dlZip.removeAttribute("href");
+
+        // Update the subtext under the title to reflect current scope
+        if (value === "__combined__") {
+          recentResultsSub.textContent = `Last ${RECENT_DAYS} days`;
+        } else {
+          // Show the selected run label (e.g., "2025-09-18 174402 (N rows)")
+          recentResultsSub.textContent =
+            sel.options[sel.selectedIndex]?.textContent || "";
+        }
+
+        // Otherwise value is a /output/... CSV URL
+        try {
+          const csvText = await fetch(value).then((r) => {
+            if (!r.ok) throw new Error("CSV fetch failed");
+            return r.text();
+          });
+
+          const parsed = Papa.parse(csvText, {
+            header: true,
+            skipEmptyLines: true,
+          });
+          const rows = parsed.data || [];
+          renderResultsRows(rows);
+
+          // Update stats
+          const done = rows.filter(
+            (r) => (r.status || "").toUpperCase() === "SUCCESS"
+          ).length;
+          const errs = rows.filter(
+            (r) => (r.status || "").toUpperCase() === "ERROR"
+          ).length;
+          statDone.textContent = done;
+          statErr.textContent = errs;
+          const durations = rows
+            .map((r) => parseFloat(r.elapsed_s || "0"))
+            .filter((x) => !isNaN(x) && x > 0);
+          if (durations.length) {
+            const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+            const mm = String(Math.floor(avg / 60)).padStart(2, "0");
+            const ss = String(Math.floor(avg % 60)).padStart(2, "0");
+            statAvg.textContent = `${mm}:${ss}`;
+          } else {
+            statAvg.textContent = "—";
+          }
+
+          // Show download links
+          dlCsv.href = value;
+          dlCsv.classList.remove("hidden");
+          const opt = sel.options[sel.selectedIndex];
+          const zipUrl = opt?.dataset?.zip;
+          if (zipUrl) {
+            dlZip.href = zipUrl;
+            dlZip.classList.remove("hidden");
+          }
+        } catch (e) {
+          console.warn("Failed to load selected run", e);
+          // fallback to last 7 days combined if available
+          try {
+            await loadRecentResults();
+          } catch {}
+        }
+      }
+
+      async function loadRecentResults(days = RECENT_DAYS) {
+        try {
+          // Preferred: server aggregates all CSVs from the last N days
+          const res = await fetch(
+            `/recent-results?days=${encodeURIComponent(days)}`
+          );
+          if (!res.ok) throw new Error("recent-results not available");
+          const payload = await res.json();
+          const rows = Array.isArray(payload) ? payload : payload.rows || [];
+
+          // If your backend isn’t ready or returns empty, show the latest CSV instead
+          if (!rows.length) {
+            await loadLatestResults();
+            return;
+          }
+
+          // ---- render (same structure you use in loadLatestResults) ----
+          resBody.innerHTML = rows
+            .map((r) => {
+              const recP = toWeb(r.receipt_file || "");
+              const regP = toWeb(r.registration_file || "");
+              const cgsP = toWeb(r.cgs_file || "");
+              const gscP = toWeb(r.gsc_file || "");
+
+              const rec = recP ? docPill(recP, "Receipt", "slate") : "";
+              const reg = regP ? docPill(regP, "Registration", "indigo") : "";
+              const cgs = cgsP ? docPill(cgsP, "CGS", "violet") : "";
+              const gsc = gscP ? docPill(gscP, "GSC", "cyan") : "";
+              const docs =
+                [rec, reg, cgs, gsc].filter(Boolean).join(pillSep()) || "—";
+
+              const note = cleanNote(r.notes);
+              const ent = cleanEntity(r.entity_name || r.entity || "—");
+
+              return `
+                <tr class="hover:bg-gray-50">
+                  <td class="px-3 py-2 text-gray-500 tabular-nums">${escapeHtml(
+                    r.started_at || "—"
+                  )}</td>
+                  <td class="px-3 py-2 text-left font-medium whitespace-normal break-words [overflow-wrap:anywhere]">${escapeHtml(
+                    ent
+                  )}</td>
+                  <td class="px-3 py-2">${badge(r.status)}</td>
+                  <td class="px-3 py-2">${escapeHtml(r.filing_id || "—")}</td>
+                  <td class="px-3 py-2"><div class="flex flex-wrap gap-1 items-center">${docs}</div></td>
+                  <td class="px-3 py-2 text-gray-700 text-left whitespace-normal break-words">
+                    ${note ? escapeHtml(note) : "—"}
+                  </td>
+                </tr>`;
+            })
+            .join("");
+
+          resCount.textContent = `${rows.length} row${
+            rows.length === 1 ? "" : "s"
+          }`;
+
+          const done = rows.filter(
+            (r) => (r.status || "").toUpperCase() === "SUCCESS"
+          ).length;
+          const errs = rows.filter(
+            (r) => (r.status || "").toUpperCase() === "ERROR"
+          ).length;
+          statDone.textContent = done;
+          statErr.textContent = errs;
+
+          const durations = rows
+            .map((r) => parseFloat(r.elapsed_s || "0"))
+            .filter((x) => !isNaN(x) && x > 0);
+          if (durations.length) {
+            const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+            const mm = String(Math.floor(avg / 60)).padStart(2, "0");
+            const ss = String(Math.floor(avg % 60)).padStart(2, "0");
+            statAvg.textContent = `${mm}:${ss}`;
+          } else {
+            statAvg.textContent = "—";
+          }
+        } catch {
+          // Fallback to your existing single-file view if the server
+          // doesn’t have /recent-results yet.
+          await loadLatestResults();
+        }
+      }
+
       async function startQueuePolling(csvPath, runId) {
         stopQueuePolling();
 
@@ -748,10 +1165,17 @@
             if (!RUN_GUARDS_ENABLED) return;
             const isReloadCombo = e.key === "r" && (e.metaKey || e.ctrlKey);
             if (e.key === "F5" || isReloadCombo) {
+              // allow opening in a new tab or with modifier keys
+              if (
+                a.target === "_blank" ||
+                e.metaKey ||
+                e.ctrlKey ||
+                e.button === 1
+              ) {
+                return;
+              }
               e.preventDefault();
               e.stopPropagation();
-              // Optional feedback:
-              // alert("Run in progress — reloading is disabled until it finishes.");
             }
           },
           { capture: true }
@@ -789,6 +1213,29 @@
           },
           { capture: true }
         );
+      }
+
+      function updateStatsFromRows(rows) {
+        const done = rows.filter(
+          (r) => (r.status || "").toUpperCase() === "SUCCESS"
+        ).length;
+        const errs = rows.filter(
+          (r) => (r.status || "").toUpperCase() === "ERROR"
+        ).length;
+        statDone.textContent = done;
+        statErr.textContent = errs;
+
+        const durations = rows
+          .map((r) => parseFloat(r.elapsed_s || "0"))
+          .filter((x) => !isNaN(x) && x > 0);
+        if (durations.length) {
+          const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+          const mm = String(Math.floor(avg / 60)).padStart(2, "0");
+          const ss = String(Math.floor(avg % 60)).padStart(2, "0");
+          statAvg.textContent = `${mm}:${ss}`;
+        } else {
+          statAvg.textContent = "—";
+        }
       }
 
       function toggleRunGuards(enable) {
@@ -1192,7 +1639,6 @@
         afterRunLinks.innerHTML = "";
 
         clearTimeline();
-        clearRecentResultsUI();
 
         // reset stats
         doneCount = 0;
@@ -1255,6 +1701,10 @@
         liveLog.textContent = "";
       });
 
+      refreshRunsBtn?.addEventListener("click", () => {
+        populateRunDropdown(RECENT_DAYS, true);
+      });
+
       // --- On load: reattach to live tail and rebuild queue
       (async function boot() {
         try {
@@ -1299,23 +1749,18 @@
             sse = new EventSource(`/stream/${ar.run_id}`);
             wireEventStream(sse);
 
-            loadLatestResults();
+            await populateRunDropdown();
           } else {
             setRunning(false);
-            loadLatestResults();
+            await populateRunDropdown();
             stopQueuePolling();
           }
         } catch {
           setRunning(false);
-          loadLatestResults();
+          await populateRunDropdown();
           stopQueuePolling();
         }
       })();
-
-      //   startQueuePolling();
-
-      // Load latest results on open
-      loadLatestResults();
     </script>
   </body>
 </html>

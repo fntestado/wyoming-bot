@@ -24,6 +24,13 @@ RUN_DIR.mkdir(parents=True, exist_ok=True)
 EVENTS_PATH = RUN_DIR / "events.jsonl"
 TRACING_ENABLED = _truthy(os.getenv("WY_TRACING", "0"))  # default OFF
 
+DAYS_KEEP = int(os.getenv("WY_DAYS_KEEP", "7"))
+PRUNE_FOLDERS = [
+    s.strip() for s in os.getenv("WY_PRUNE_FOLDERS", "receipts,registrations,cgs,gsc").split(",")
+    if s.strip()
+]
+
+
 # =========================
 # --- CONSTANTS ---
 # =========================
@@ -248,9 +255,11 @@ def write_results_csv(results: list[dict], input_headers: list[str], out_dir: st
         for row in results:
             w.writerow({k: row.get(k, "") for k in fieldnames})
 
-    # prune AFTER writing so we keep (newest + previous two)
-    prune_old_results(out_dir)                       # keeps latest 3 results_*.csv
-    prune_old_runs(RUNS_ROOT, keep=3, exclude=(RUN_ID,))  # keeps latest 3 run dirs, never delete current
+    # NEW: age-based pruning (last 7 days by default; override via WY_DAYS_KEEP)
+    prune_results_by_age(out_dir, DAYS_KEEP)
+    prune_documents_by_age(out_dir, DAYS_KEEP, PRUNE_FOLDERS)
+    prune_run_dirs_by_age(RUNS_ROOT, DAYS_KEEP, exclude=(RUN_ID,))
+    prune_media_by_age(DAYS_KEEP)
 
     print(f">>> Results written to: {out_path}")
     return out_path
@@ -1431,6 +1440,100 @@ def prune_doc_buckets_by_run(out_dir: str,
                             print(f">>> Could not delete {f}: {e}")
     except Exception as e:
         print(f">>> prune_doc_buckets_by_run failed: {e}")
+
+def _within(parent: Path, child: Path) -> bool:
+    try:
+        parent = parent.resolve()
+        child  = child.resolve()
+        return str(child).startswith(str(parent))
+    except Exception:
+        return False
+
+def _delete_files_older_than(dirpath: Path, days: int, patterns=("**/*",)):
+    cut = time.time() - days * 86400
+    deleted = 0
+    if not dirpath.exists():
+        return 0
+    for pat in patterns:
+        for p in dirpath.glob(pat):
+            try:
+                if p.is_file() and p.stat().st_mtime < cut:
+                    p.unlink()
+                    deleted += 1
+            except Exception as e:
+                print(f">>> Could not delete {p}: {e}")
+    return deleted
+
+def prune_results_by_age(out_dir: str, days: int = DAYS_KEEP) -> None:
+    """
+    Delete results_*.csv older than `days`.
+    """
+    base = Path(out_dir)
+    if not base.exists(): return
+    cut = time.time() - days * 86400
+    for f in base.glob("results_*.csv"):
+        try:
+            if f.stat().st_mtime < cut:
+                f.unlink()
+                print(f">>> Deleted old results CSV: {f}")
+        except Exception as e:
+            print(f">>> Could not delete {f}: {e}")
+
+def prune_documents_by_age(out_dir: str, days: int = DAYS_KEEP, folders: list[str] = None) -> None:
+    """
+    Delete doc files older than `days` inside selected subfolders.
+    Also prunes stray PDFs in the out_dir root (safe/no-op if none).
+    """
+    base = Path(out_dir)
+    if not base.exists(): return
+    folders = folders or PRUNE_FOLDERS
+
+    # Subfolders (receipts, registrations, cgs, gsc)
+    for sub in folders:
+        d = base / sub
+        if _within(base, d):
+            n = _delete_files_older_than(d, days, patterns=("**/*.pdf", "**/*.png"))
+            if n: print(f">>> Deleted {n} old file(s) in {d}")
+
+    # Root PDFs (just in case any old flow saved here)
+    n_root = _delete_files_older_than(base, days, patterns=("*.pdf",))
+    if n_root:
+        print(f">>> Deleted {n_root} old PDF(s) in {base}")
+
+def prune_run_dirs_by_age(runs_root: str, days: int = DAYS_KEEP, exclude: tuple[str, ...] = ()) -> None:
+    """
+    Delete run folders older than `days`, except those in `exclude`.
+    """
+    root = Path(runs_root)
+    if not root.exists(): return
+    cut = time.time() - days * 86400
+    protected = set(exclude or ())
+    for d in root.iterdir():
+        if not d.is_dir(): continue
+        if d.name in protected: continue
+        try:
+            if d.stat().st_mtime < cut:
+                shutil.rmtree(d)
+                print(f">>> Deleted old run folder: {d}")
+        except Exception as e:
+            print(f">>> Could not delete run folder {d}: {e}")
+
+def prune_media_by_age(days: int = DAYS_KEEP) -> None:
+    """
+    Optional: delete videos & traces older than `days` when enabled.
+    """
+    # Videos (when WY_VIDEO_DIR is set AND WY_PRUNE_VIDEOS is truthy)
+    if _truthy(os.getenv("WY_PRUNE_VIDEOS", "1")):
+        vdir = os.getenv("WY_VIDEO_DIR")
+        if vdir:
+            n = _delete_files_older_than(Path(vdir), days, patterns=("**/*",))
+            if n: print(f">>> Deleted {n} old video file(s) in {vdir}")
+
+    # Traces (only if a trace dir is configured)
+    tdir = os.getenv("WY_TRACE_DIR")
+    if tdir:
+        n = _delete_files_older_than(Path(tdir), days, patterns=("**/*",))
+        if n: print(f">>> Deleted {n} old trace file(s) in {tdir}")
 
 def _retry_nav(fn, attempts=6, sleep_s=0.25):
     for i in range(attempts):

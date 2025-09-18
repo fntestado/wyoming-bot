@@ -1,15 +1,16 @@
 # server.py
-import os, re, sys, csv, subprocess, asyncio, json, threading, time
-from datetime import datetime
+import os, re, sys, csv, subprocess, asyncio, json, threading, time, glob, io, zipfile
+from datetime import datetime, timedelta
 from typing import Iterator, Optional
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from functools import lru_cache
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 DATA_DIR = os.getenv("WY_DATA_DIR", os.path.join(BASE_DIR, "data"))
 OUT_DIR  = os.getenv("WY_OUT_DIR",  os.path.join(BASE_DIR, "output"))
 UI_DIR   = os.getenv("WY_UI_DIR",   os.path.join(BASE_DIR, "ui"))
@@ -497,3 +498,209 @@ def download_result(fname: str):
     if not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="file not found")
     return FileResponse(path, filename=fname)
+
+@app.get("/recent-results")
+def recent_results(days: int = 7, max_files: int = 50):
+    """
+    Return the list of results_*.csv files from the last `days` days (default 7),
+    newest first, with basic metadata (name, mtime, size, row_count).
+    """
+    base = Path(OUT_DIR)
+    if not base.exists():
+        return {"files": []}
+
+    cutoff = time.time() - (days * 86400)
+    files = []
+    for f in sorted(base.glob("results_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True):
+        mt = f.stat().st_mtime
+        if mt < cutoff:
+            continue
+        # quick row count (cheap)
+        try:
+            with open(f, newline="", encoding="utf-8") as fh:
+                rows = sum(1 for _ in fh) - 1  # minus header
+            row_count = max(rows, 0)
+        except Exception:
+            row_count = None
+        files.append({
+            "name": f.name,
+            "mtime": datetime.fromtimestamp(mt).isoformat(timespec="seconds"),
+            "size": f.stat().st_size,
+            "row_count": row_count,
+            "download_url": f"/download/{f.name}",
+        })
+        if len(files) >= max_files:
+            break
+
+    return {"files": files, "days": days}
+
+
+@app.get("/ui/recent", response_class=HTMLResponse)
+def ui_recent(days: int = 7):
+    """
+    Minimal UI page that lists recent results files (last 7 days by default).
+    """
+    html = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Recent Results (last {days} days)</title>
+  <style>
+    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }}
+    h1 {{ margin: 0 0 12px; }}
+    table {{ border-collapse: collapse; width: 100%; }}
+    th, td {{ border-bottom: 1px solid #eee; padding: 8px 6px; text-align: left; }}
+    th {{ background: #fafafa; }}
+    .muted {{ color: #666; }}
+  </style>
+</head>
+<body>
+  <h1>Recent Results <span class="muted">(last {days} days)</span></h1>
+  <p><em>Tip:</em> change the range via <code>/recent-results?days=14</code> or add <code>?days=14</code> to this page URL.</p>
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th>File</th>
+        <th>Modified</th>
+        <th>Rows</th>
+        <th>Size</th>
+        <th>Download</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const days = params.get('days') || {days};
+    fetch(`/recent-results?days=${{days}}`).then(r => r.json()).then(data => {{
+      const tbody = document.querySelector('#tbl tbody');
+      if (!data.files || !data.files.length) {{
+        tbody.innerHTML = '<tr><td colspan="5" class="muted">No results in range.</td></tr>';
+        return;
+      }}
+      for (const f of data.files) {{
+        const tr = document.createElement('tr');
+        const size = (f.size/1024).toFixed(1) + ' KB';
+        tr.innerHTML = `
+          <td><code>${{f.name}}</code></td>
+          <td>${{f.mtime}}</td>
+          <td>${{f.row_count ?? '—'}}</td>
+          <td>${{size}}</td>
+          <td><a href="${{f.download_url}}">Download</a></td>
+        `;
+        tbody.appendChild(tr);
+      }}
+    }});
+  </script>
+</body>
+</html>
+    """.strip()
+    return HTMLResponse(html)
+
+def _within_days(path: str, days: int) -> bool:
+    try:
+        return os.path.getmtime(path) >= (time.time() - days * 86400)
+    except OSError:
+        return False
+    
+def _list_runs(days: int):
+    cutoff = time.time() - days * 86400
+    runs = []
+    for p in glob.glob(os.path.join(OUTPUT_DIR, "results_*.csv")):
+        try:
+            mtime = os.path.getmtime(p)
+        except OSError:
+            continue
+        if mtime < cutoff:
+            continue
+
+        # quick row count (DictReader skips header)
+        try:
+            with open(p, newline="", encoding="utf-8") as fh:
+                rows = sum(1 for _ in csv.DictReader(fh))
+        except Exception:
+            rows = 0
+
+        name = os.path.basename(p)
+        label_ts = name.replace("results_", "").replace(".csv", "").replace("_", " ")
+        runs.append({
+            "name": name,
+            "url": f"/output/{name}",
+            "label": f"{label_ts} ({rows} rows)",
+            "rows": rows,
+            "zip": f"/download-run-zip?file={name}",  # shown by UI if present
+            "mtime": mtime,
+        })
+
+    runs.sort(key=lambda x: x["mtime"], reverse=True)
+    for r in runs:
+        r.pop("mtime", None)
+    return runs
+
+
+@app.get("/result-files")
+def result_files(days: int = Query(7, ge=1, le=90)):
+    """Return list of recent run CSVs (last N days)."""
+    return JSONResponse(_list_runs(days))
+
+@app.get("/download-run-zip")
+def download_run_zip(file: str = Query(..., description="results_YYYY-MM-DD_HHMMSS.csv")):
+    """Zip all docs referenced by a specific results_*.csv and return as attachment."""
+    if not (file.startswith("results_") and file.endswith(".csv")):
+        raise HTTPException(400, "bad file param")
+
+    csv_path = os.path.join(OUTPUT_DIR, file)
+    if not os.path.isfile(csv_path):
+        raise HTTPException(404, "results CSV not found")
+
+    cols = ("receipt_file", "registration_file", "cgs_file", "gsc_file")
+    doc_paths = set()
+
+    with open(csv_path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            for c in cols:
+                v = (row.get(c) or "").strip()
+                if not v:
+                    continue
+                # normalize to OUTPUT_DIR
+                if v.startswith("/output/"):
+                    v = v[len("/output/"):]
+                if v.startswith("output/"):
+                    v = v[len("output/"):]
+                v = v.lstrip("/\\")
+                abs_p = os.path.join(OUTPUT_DIR, v)
+                if os.path.isfile(abs_p):
+                    doc_paths.add(abs_p)
+
+    mem = io.BytesIO()
+    with zipfile.ZipFile(mem, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(doc_paths):
+            z.write(p, arcname=os.path.relpath(p, OUTPUT_DIR))
+    mem.seek(0)
+
+    dl_name = file.replace(".csv", "_docs.zip")
+    return StreamingResponse(
+        mem,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{dl_name}"'},
+    )
+
+@app.get("/recent-results")
+def recent_results(days: int = Query(7, ge=1, le=90)):
+    """Aggregate rows from all results_*.csv in the last N days and return as JSON."""
+    cutoff = time.time() - days * 86400
+    rows = []
+    for p in glob.glob(os.path.join(OUTPUT_DIR, "results_*.csv")):
+        try:
+            if os.path.getmtime(p) < cutoff:
+                continue
+        except OSError:
+            continue
+        try:
+            with open(p, newline="", encoding="utf-8") as fh:
+                rows.extend(list(csv.DictReader(fh)))
+        except Exception:
+            continue
+    return JSONResponse(rows)
