@@ -286,7 +286,6 @@
           <div
             class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3"
           >
-            <!-- Left cluster: title + count + subtext -->
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
                 <h3 class="font-semibold" id="recentResultsHeading">
@@ -298,91 +297,202 @@
                   class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs bg-gray-100 text-gray-700"
                   >0 rows</span
                 >
+                <span
+                  id="scopeBadge"
+                  class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-violet-100 text-violet-700 ring-1 ring-inset ring-violet-200"
+                  >Combined</span
+                >
               </div>
-              <p id="recentResultsSub" class="text-xs text-gray-500">
-                (last 7 days)
-              </p>
+              <p id="recentResultsSub" class="text-xs text-gray-500"></p>
             </div>
 
-            <!-- Right cluster: selector + actions -->
             <div class="flex flex-wrap items-center gap-2">
-              <div class="relative">
-                <label for="runSelect" class="sr-only">Select run</label>
-                <select
-                  id="runSelect"
-                  class="appearance-none border border-gray-300 rounded-lg bg-white text-sm pl-3 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              <div class="flex items-center gap-2">
+                <div class="relative">
+                  <label for="runSelect" class="sr-only">Select run</label>
+                  <svg
+                    class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  <select
+                    id="runSelect"
+                    class="appearance-none border border-gray-300 rounded-lg bg-white text-sm pl-8 pr-9 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="__combined__">Last 7 days (combined)</option>
+                  </select>
+                  <svg
+                    class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  <div
+                    id="runSelectSpinner"
+                    class="hidden absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin"
+                    aria-label="Loading runs"
+                  ></div>
+                </div>
+
+                <button
+                  id="refreshRunsBtn"
+                  class="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white h-9 w-9 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  title="Reload run list"
+                  type="button"
+                  aria-label="Reload run list"
                 >
-                  <option value="__combined__">Last 7 days (combined)</option>
-                </select>
-                <!-- Caret -->
-                <svg
-                  class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-                <!-- Tiny spinner (shown while loading runs) -->
-                <div
-                  id="runSelectSpinner"
-                  class="hidden absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin"
-                  aria-label="Loading runs"
-                ></div>
+                  <svg
+                    class="h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="2"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+                    />
+                  </svg>
+                </button>
               </div>
 
-              <button
-                id="refreshRunsBtn"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                title="Refresh run list"
-                type="button"
-              >
-                <svg
-                  class="h-4 w-4"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
+              <span class="hidden sm:inline w-px h-6 bg-gray-200 mx-1"></span>
+
+              <div class="relative">
+                <button
+                  id="exportMenuBtn"
+                  type="button"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <path
-                    d="M3 10a7 7 0 0111.95-4.95l.9-.9a1 1 0 111.42 1.42l-2.83 2.83a1 1 0 01-1.42 0L10.59 4.7A1 1 0 0112 3.3L14.3 5.6A9 9 0 103 10z"
-                  />
-                </svg>
-                Refresh
-              </button>
+                  <svg
+                    class="h-4 w-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"
+                    />
+                    <path
+                      d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"
+                    />
+                  </svg>
+                  Export
+                  <svg
+                    class="h-3.5 w-3.5 opacity-60"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                </button>
 
-              <a
-                id="runDownloadCsv"
-                class="hidden inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                href="#"
-                target="_blank"
-                rel="noopener"
-              >
-                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path
-                    d="M3 3a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H9l-4 4v-4H5a2 2 0 01-2-2V3z"
-                  />
-                </svg>
-                CSV
-              </a>
+                <div
+                  id="exportMenuPanel"
+                  class="hidden absolute right-0 mt-1 w-48 rounded-md border border-gray-200 bg-white shadow-lg p-1 z-10"
+                  role="menu"
+                  aria-labelledby="exportMenuBtn"
+                >
+                  <a
+                    id="runDownloadCsv"
+                    class="hidden group flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    href="#"
+                    target="_blank"
+                    rel="noopener"
+                    role="menuitem"
+                  >
+                    <svg
+                      class="h-4 w-4 text-gray-500 group-hover:text-gray-700"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M7.75 3a.75.75 0 01.75.75v2.25h3.5V3.75a.75.75 0 011.5 0v2.25h2.25a.75.75 0 010 1.5h-2.25V9.75h2.25a.75.75 0 010 1.5h-2.25v2.25a.75.75 0 01-1.5 0V11.25h-3.5v2.25a.75.75 0 01-1.5 0V11.25H3.75a.75.75 0 010-1.5H6V7.5H3.75a.75.75 0 010-1.5H6V3.75A.75.75 0 016.75 3h1zM8.5 7.5h3.5V9.75H8.5V7.5z"
+                      />
+                      <path
+                        fill-rule="evenodd"
+                        d="M3 4.25A2.25 2.25 0 015.25 2h9.5A2.25 2.25 0 0117 4.25v11.5A2.25 2.25 0 0114.75 18h-9.5A2.25 2.25 0 013 15.75V4.25zm1.5 0V15.75a.75.75 0 00.75.75h9.5a.75.75 0 00.75-.75V4.25a.75.75 0 00-.75-.75h-9.5a.75.75 0 00-.75.75z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                    Download CSV
+                  </a>
 
-              <a
-                id="runDownloadZip"
-                class="hidden inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                href="#"
-                target="_blank"
-                rel="noopener"
-              >
-                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path
-                    d="M6 2a2 2 0 00-2 2v12l4-2 4 2 4-2V4a2 2 0 00-2-2H6z"
-                  />
-                </svg>
-                Docs (.zip)
-              </a>
+                  <a
+                    id="runDownloadZip"
+                    class="hidden group flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    href="#"
+                    target="_blank"
+                    rel="noopener"
+                    role="menuitem"
+                  >
+                    <svg
+                      class="h-4 w-4 text-gray-500 group-hover:text-gray-700"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 01.75.75v2.5a.75.75 0 01-.75.75H2.75a.75.75 0 01-.75-.75v-2.5zm15 0v2.5h-14.5v-2.5h14.5zM2.75 10a.75.75 0 00-.75.75v4.5c0 .414.336.75.75.75h14.5a.75.75 0 00.75-.75v-4.5a.75.75 0 00-.75-.75H2.75zm1.5 4.25v-2.75h11.5v2.75H4.25z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                    Download docs (.zip)
+                  </a>
+
+                  <div
+                    id="exportUnavailable"
+                    class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-400"
+                    role="menuitem"
+                  >
+                    <svg
+                      class="h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                    Select a specific run to export
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -473,6 +583,10 @@
       const recentResultsSub = document.getElementById("recentResultsSub");
       const runSelectSpinner = document.getElementById("runSelectSpinner");
       const refreshRunsBtn = document.getElementById("refreshRunsBtn");
+      const scopeBadge = document.getElementById("scopeBadge");
+      const exportMenuBtn = document.getElementById("exportMenuBtn");
+      const exportMenuPanel = document.getElementById("exportMenuPanel");
+      const exportUnavailable = document.getElementById("exportUnavailable");
       const STATUS = {
         start: {
           label: "In progress",
@@ -807,25 +921,59 @@
             const ent = cleanEntity(r.entity_name || r.entity || "—");
 
             return `
-        <tr class="hover:bg-gray-50">
-          <td class="px-3 py-2 text-gray-500 tabular-nums">${escapeHtml(
-            r.started_at || "—"
-          )}</td>
-          <td class="px-3 py-2 text-left font-medium whitespace-normal break-words [overflow-wrap:anywhere]">${escapeHtml(
-            ent
-          )}</td>
-          <td class="px-3 py-2">${badge(r.status)}</td>
-          <td class="px-3 py-2">${escapeHtml(r.filing_id || "—")}</td>
-          <td class="px-3 py-2"><div class="flex flex-wrap gap-1 items-center">${docs}</div></td>
-          <td class="px-3 py-2 text-gray-700 text-left whitespace-normal break-words">
-            ${note ? escapeHtml(note) : "—"}
-          </td>
-        </tr>`;
+              <tr class="hover:bg-gray-50">
+                <td class="px-3 py-2 text-gray-500 tabular-nums">${escapeHtml(
+                  r.started_at || "—"
+                )}</td>
+                <td class="px-3 py-2 text-left font-medium whitespace-normal break-words [overflow-wrap:anywhere]">${escapeHtml(
+                  ent
+                )}</td>
+                <td class="px-3 py-2">${badge(r.status)}</td>
+                <td class="px-3 py-2">${escapeHtml(r.filing_id || "—")}</td>
+                <td class="px-3 py-2"><div class="flex flex-wrap gap-1 items-center">${docs}</div></td>
+                <td class="px-3 py-2 text-gray-700 text-left whitespace-normal break-words">
+                  ${note ? escapeHtml(note) : "—"}
+                </td>
+              </tr>`;
           })
           .join("");
 
         const n = rows.length;
         resCount.textContent = `${n} row${n === 1 ? "" : "s"}`;
+      }
+
+      function refreshExportMenuState() {
+        const sel = document.getElementById("runSelect");
+        const dlCsv = document.getElementById("runDownloadCsv");
+        const dlZip = document.getElementById("runDownloadZip");
+        const exportBtn = document.getElementById("exportMenuBtn");
+        const exportPanel = document.getElementById("exportMenuPanel");
+        const unavailable = document.getElementById("exportUnavailable");
+
+        const singleRun = sel && sel.value !== "__combined__";
+        const hasCsv = dlCsv && !dlCsv.classList.contains("hidden");
+        const hasZip = dlZip && !dlZip.classList.contains("hidden");
+        const anythingToExport = singleRun && (hasCsv || hasZip);
+
+        if (unavailable) {
+          // Show hint only when there’s nothing to export
+          unavailable.classList.toggle("hidden", anythingToExport);
+        }
+
+        if (exportBtn) {
+          // Disable the button when export isn’t available
+          if (!anythingToExport) {
+            exportBtn.setAttribute("disabled", "disabled");
+            exportBtn.classList.add("opacity-50", "cursor-not-allowed");
+            if (exportPanel) {
+              exportPanel.classList.add("hidden");
+              exportBtn.setAttribute("aria-expanded", "false");
+            }
+          } else {
+            exportBtn.removeAttribute("disabled");
+            exportBtn.classList.remove("opacity-50", "cursor-not-allowed");
+          }
+        }
       }
 
       async function populateRunDropdown(
@@ -840,16 +988,15 @@
 
         const previous = sel.value;
 
-        // -- begin loading UI
+        // loading UI
         sel.disabled = true;
         sel.classList.add("opacity-60", "cursor-wait");
         spin?.classList.remove("hidden");
 
         try {
-          // reset options with combined first (we'll remove it if unsupported)
+          // Reset with "combined" first; we’ll remove if unsupported.
           sel.innerHTML = `<option value="__combined__">Last ${days} days (combined)</option>`;
 
-          // fetch run files
           let runs = [];
           try {
             runs = await fetch(
@@ -860,7 +1007,7 @@
           }
           if (!Array.isArray(runs)) runs = [];
 
-          // probe combined endpoint; remove the option if not available
+          // Probe combined endpoint
           let hasCombined = true;
           try {
             const probe = await fetch(
@@ -875,68 +1022,64 @@
             hasCombined = false;
           }
 
-          // no runs + no combined -> empty state
+          // Empty state if no runs and no combined
           if (runs.length === 0 && !hasCombined) {
-            resBody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-sm text-slate-500">
-        No runs in the last ${days} days.
-      </td></tr>`;
+            resBody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-sm text-slate-500">No runs in the last ${days} days.</td></tr>`;
             resCount.textContent = "0 rows";
             dlCsv.classList.add("hidden");
             dlCsv.removeAttribute("href");
             dlZip.classList.add("hidden");
             dlZip.removeAttribute("href");
-            // (optional) reset stats
-            // statDone.textContent = "0"; statErr.textContent = "0"; statAvg.textContent = "—";
-            sub && (sub.textContent = `Last ${days} days`);
-            return; // nothing else to load
+            // sub && (sub.textContent = `Last ${days} days`);
+            return;
           }
 
-          // populate options from /result-files
+          // PATCH: build run <option>s with a concrete /output/<filename>.csv
           for (const r of runs) {
             const opt = document.createElement("option");
-            opt.value = r.url; // e.g. /output/results_YYYY-MM-DD_HHMMSS.csv
-            opt.textContent = r.label; // e.g. "2025-09-18 174402 (12 rows)"
-            if (r.name) opt.dataset.name = r.name;
+            if (r.name && !r.name.endsWith("/")) {
+              opt.value = `/output/${encodeURIComponent(r.name)}`; // concrete, per-run CSV
+              opt.dataset.name = r.name;
+            } else {
+              opt.value = r.url; // fallback
+            }
             if (r.zip) opt.dataset.zip = r.zip;
+            opt.textContent = r.label || r.name || r.url;
             sel.appendChild(opt);
           }
 
-          // restore selection if possible
+          // Prefer to keep user’s selection; otherwise default to Combined if available
           if (
             preserveSelection &&
             [...sel.options].some((o) => o.value === previous)
           ) {
             sel.value = previous;
-          } else if (runs.length) {
-            sel.value = runs[0].url; // newest first
           } else if (hasCombined) {
             sel.value = "__combined__";
+          } else if (runs.length) {
+            sel.value = runs[0].url; // fallback to most recent single run
           }
 
-          // onchange (idempotent to reassign)
           sel.onchange = async () => {
             await loadSelectedRun();
-            // reflect current scope in the subtext
-            if (sel.value === "__combined__") {
-              sub && (sub.textContent = `Last ${days} days`);
-            } else {
-              sub &&
-                (sub.textContent =
-                  sel.options[sel.selectedIndex]?.textContent || "");
-            }
+            // if (sel.value === "__combined__") {
+            //   // sub && (sub.textContent = `Last ${days} days`);
+            // } else {
+            //   sub &&
+            //     (sub.textContent =
+            //       sel.options[sel.selectedIndex]?.textContent || "");
+            // }
           };
 
-          // initial load + subtext
           await loadSelectedRun();
-          if (sel.value === "__combined__") {
-            sub && (sub.textContent = `Last ${days} days`);
-          } else {
-            sub &&
-              (sub.textContent =
-                sel.options[sel.selectedIndex]?.textContent || "");
-          }
+          // if (sel.value === "__combined__") {
+          //   // sub && (sub.textContent = `Last ${days} days`);
+          // } else {
+          //   sub &&
+          //     (sub.textContent =
+          //       sel.options[sel.selectedIndex]?.textContent || "");
+          // }
         } finally {
-          // -- end loading UI
           sel.disabled = false;
           sel.classList.remove("opacity-60", "cursor-wait");
           spin?.classList.add("hidden");
@@ -949,71 +1092,75 @@
         const dlCsv = document.getElementById("runDownloadCsv");
         const dlZip = document.getElementById("runDownloadZip");
 
-        // Reset links
+        // Reset links every time
         dlCsv.classList.add("hidden");
-        dlZip.classList.add("hidden");
         dlCsv.removeAttribute("href");
+        dlZip.classList.add("hidden");
         dlZip.removeAttribute("href");
 
-        // Update the subtext under the title to reflect current scope
         if (value === "__combined__") {
-          recentResultsSub.textContent = `Last ${RECENT_DAYS} days`;
-        } else {
-          // Show the selected run label (e.g., "2025-09-18 174402 (N rows)")
-          recentResultsSub.textContent =
-            sel.options[sel.selectedIndex]?.textContent || "";
+          // recentResultsSub.textContent = `Last ${RECENT_DAYS} days`;
+          await loadCombinedClient(RECENT_DAYS);
+          scopeBadge.textContent = "Combined";
+          scopeBadge.className =
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-violet-100 text-violet-700 ring-1 ring-inset ring-violet-200";
+          refreshExportMenuState?.();
+          return;
         }
 
-        // Otherwise value is a /output/... CSV URL
+        // Single run
         try {
-          const csvText = await fetch(value).then((r) => {
-            if (!r.ok) throw new Error("CSV fetch failed");
-            return r.text();
-          });
+          clearRecentResultsUI();
 
-          const parsed = Papa.parse(csvText, {
+          const opt = sel.options[sel.selectedIndex];
+          const { text, usedUrl } = await fetchCsvTextWithFallbacks(opt);
+
+          const parsed = Papa.parse(text, {
             header: true,
             skipEmptyLines: true,
           });
-          const rows = parsed.data || [];
-          renderResultsRows(rows);
+          const all = Array.isArray(parsed.data) ? parsed.data : [];
 
-          // Update stats
-          const done = rows.filter(
-            (r) => (r.status || "").toUpperCase() === "SUCCESS"
-          ).length;
-          const errs = rows.filter(
-            (r) => (r.status || "").toUpperCase() === "ERROR"
-          ).length;
-          statDone.textContent = done;
-          statErr.textContent = errs;
-          const durations = rows
-            .map((r) => parseFloat(r.elapsed_s || "0"))
-            .filter((x) => !isNaN(x) && x > 0);
-          if (durations.length) {
-            const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
-            const mm = String(Math.floor(avg / 60)).padStart(2, "0");
-            const ss = String(Math.floor(avg % 60)).padStart(2, "0");
-            statAvg.textContent = `${mm}:${ss}`;
-          } else {
-            statAvg.textContent = "—";
+          // 🔎 If the server sent a combined CSV, trim to this run’s rows.
+          const rows = filterRowsToRun(all, opt, usedUrl);
+          if (rows.length < all.length) {
+            console.warn(
+              `Filtered ${all.length - rows.length} aggregated rows`
+            );
           }
 
-          // Show download links
-          dlCsv.href = value;
-          dlCsv.classList.remove("hidden");
-          const opt = sel.options[sel.selectedIndex];
+          renderResultsRows(rows);
+          updateStatsFromRows(rows);
+
+          // Downloads (prefer stable /download/<name> if we have one)
+          const name = opt?.dataset?.name || fileBaseName(usedUrl);
+          if (name) {
+            dlCsv.href = `/download/${encodeURIComponent(name)}`;
+            dlCsv.classList.remove("hidden");
+          }
           const zipUrl = opt?.dataset?.zip;
           if (zipUrl) {
             dlZip.href = zipUrl;
             dlZip.classList.remove("hidden");
           }
+
+          scopeBadge.textContent = "Single run";
+          scopeBadge.className =
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200";
+          // recentResultsSub.textContent =
+          //   sel.options[sel.selectedIndex]?.textContent || "";
+          refreshExportMenuState?.();
         } catch (e) {
-          console.warn("Failed to load selected run", e);
-          // fallback to last 7 days combined if available
-          try {
-            await loadRecentResults();
-          } catch {}
+          console.warn("Failed to load selected run with fallbacks", e);
+          // Show a friendly hint, then fall back to combined as a last resort
+          resBody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-sm text-amber-700 bg-amber-50 rounded-md">
+            Couldn’t load that run’s CSV. Showing combined results for the last ${RECENT_DAYS} days.
+          </td></tr>`;
+          await loadCombinedClient(RECENT_DAYS);
+          scopeBadge.textContent = "Combined";
+          scopeBadge.className =
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-violet-100 text-violet-700 ring-1 ring-inset ring-violet-200";
+          refreshExportMenuState?.();
         }
       }
 
@@ -1164,18 +1311,17 @@
           (e) => {
             if (!RUN_GUARDS_ENABLED) return;
             const isReloadCombo = e.key === "r" && (e.metaKey || e.ctrlKey);
-            if (e.key === "F5" || isReloadCombo) {
-              // allow opening in a new tab or with modifier keys
-              if (
-                a.target === "_blank" ||
-                e.metaKey ||
-                e.ctrlKey ||
-                e.button === 1
-              ) {
-                return;
-              }
+            if (e.key === "F5" || (e.key === "r" && (e.metaKey || e.ctrlKey))) {
               e.preventDefault();
               e.stopPropagation();
+            }
+            if (
+              e.key === "Escape" &&
+              exportMenuPanel &&
+              !exportMenuPanel.classList.contains("hidden")
+            ) {
+              exportMenuPanel.classList.add("hidden");
+              exportMenuBtn.setAttribute("aria-expanded", "false");
             }
           },
           { capture: true }
@@ -1207,6 +1353,18 @@
             if (!href) return;
             // allow same-page anchors
             if (href.startsWith("#")) return;
+            if (
+              !exportMenuPanel ||
+              exportMenuPanel.classList.contains("hidden")
+            )
+              return;
+            if (
+              !exportMenuPanel.contains(e.target) &&
+              !exportMenuBtn.contains(e.target)
+            ) {
+              exportMenuPanel.classList.add("hidden");
+              exportMenuBtn.setAttribute("aria-expanded", "false");
+            }
             // block external / full nav while running
             e.preventDefault();
             e.stopPropagation();
@@ -1491,6 +1649,277 @@
         statAvg.textContent = "—";
       }
 
+      function fileBaseName(urlOrName) {
+        try {
+          const u = new URL(urlOrName, location.origin);
+          return decodeURIComponent(u.pathname.split("/").pop() || "");
+        } catch {
+          return decodeURIComponent((urlOrName || "").split("/").pop() || "");
+        }
+      }
+
+      function guessRunFolderFromUrl(u) {
+        try {
+          const p = new URL(u, location.origin).pathname;
+          // /output/<run>/.../results.csv
+          const m1 = p.match(/\/output\/([^\/]+)\//);
+          if (m1) return m1[1];
+          // /download/<run>.csv or .zip
+          const m2 = p.match(/\/download\/([^\/]+)\.(csv|zip)$/);
+          if (m2) return m2[1];
+          const base = p.split("/").pop() || "";
+          const m3 = base.match(/^(.+?)\.csv$/);
+          if (m3) return m3[1];
+        } catch {}
+        return "";
+      }
+
+      function filterRowsToRun(rows, opt, usedUrl) {
+        // Try to identify the run “folder”/token from URL, zip, or name
+        const runToken =
+          guessRunFolderFromUrl(usedUrl) ||
+          guessRunFolderFromUrl(opt?.dataset?.zip || "") ||
+          guessRunFolderFromUrl(opt?.dataset?.name || "");
+
+        if (!rows?.length || !runToken) return rows;
+
+        // Use any of the doc paths to decide row provenance
+        const filtered = rows.filter((r) => {
+          const paths = [
+            r.receipt_file,
+            r.registration_file,
+            r.cgs_file,
+            r.gsc_file,
+          ]
+            .filter(Boolean)
+            .map(String);
+          return paths.some((p) => p.includes(runToken));
+        });
+
+        // If our heuristic found something, use it; otherwise keep original
+        return filtered.length ? filtered : rows;
+      }
+
+      async function validateCsvBeforeUpload(file) {
+        // 1) Peek at first ~100 lines to detect weird prologs/delimiter
+        const text = await file.text();
+        let working = text;
+
+        // Excel sep=; directive
+        const firstLine = working.split(/\r\n|\n/)[0] || "";
+        let forcedDelimiter = "";
+        const sepMatch = firstLine.match(/^sep=(.+)$/i);
+        if (sepMatch) {
+          forcedDelimiter = sepMatch[1];
+          // drop the prolog line
+          working = working
+            .split(/\r\n|\n/)
+            .slice(1)
+            .join("\n");
+        }
+
+        // 2) Parse with Papa
+        const parsed = Papa.parse(working, {
+          header: true,
+          skipEmptyLines: "greedy",
+          delimiter: forcedDelimiter || "", // auto-detect unless sep= forced it
+          dynamicTyping: false,
+          transformHeader: (h) => (h || "").trim().toLowerCase(),
+        });
+
+        if (parsed.errors?.length) {
+          const e = parsed.errors[0];
+          throw new Error(
+            `CSV parse error on row ${e.row ?? "?"}: ${e.message}`
+          );
+        }
+
+        // 3) Header checks
+        const cols = parsed.meta?.fields || [];
+        if (!cols.includes("entity_name")) {
+          throw new Error(
+            `CSV must include a column named "entity_name". Found: ${
+              cols.join(", ") || "(none)"
+            }`
+          );
+        }
+        // duplicate header detection (Papa already keeps last; we can detect by scanning raw line too)
+        const rawHeader = (working.split(/\r\n|\n/)[0] || "").trim();
+        const tokens = rawHeader.split(parsed.meta.delimiter || ",");
+        const seen = new Set();
+        for (const t of tokens.map((s) => s.trim().toLowerCase())) {
+          if (seen.has(t))
+            throw new Error(`Duplicate column "${t}" in header.`);
+          seen.add(t);
+        }
+
+        // 4) Quick row-level hygiene
+        const badRows = [];
+        (parsed.data || []).forEach((row, idx) => {
+          // row index +2 accounts for header line
+          const lineNo = idx + 2;
+          const name = (row.entity_name ?? "").toString().trim();
+          if (!name) badRows.push(`Row ${lineNo}: missing entity_name`);
+          // CSV injection — warn/not block
+          for (const k in row) {
+            const v = (row[k] ?? "").toString();
+            if (/^[=+\-@]/.test(v)) {
+              // mark or neutralize for later export
+              row[k] = "'" + v; // prefix apostrophe
+            }
+          }
+        });
+        if (badRows.length) {
+          // choose: block or allow? Here we block to be safe:
+          throw new Error(
+            `Found ${badRows.length} row issue(s).\n` +
+              badRows.slice(0, 5).join("\n")
+          );
+        }
+
+        // 5) Success — hand off normalized CSV (optionally rebuild CSV for upload)
+        return { parsed, textForUpload: working };
+      }
+
+      async function fetchCsvTextWithFallbacks(opt) {
+        const v = (opt.value || "").trim();
+        const rawName = (opt.dataset?.name || fileBaseName(v) || "").trim();
+
+        // If the "name" is literally "results.csv" (generic), ignore it.
+        const name = rawName.toLowerCase() === "results.csv" ? "" : rawName;
+
+        // Try concrete files FIRST, then the option URL as the last resort.
+        const candidates = [
+          name ? `/output/${encodeURIComponent(name)}` : "",
+          name ? `/download/${encodeURIComponent(name)}` : "",
+          v, // ← alias (last)
+        ].filter(Boolean);
+
+        const tried = new Set();
+
+        for (let u of candidates) {
+          if (tried.has(u)) continue;
+          tried.add(u);
+
+          // Never pull aggregated endpoints for a single-run view
+          if (/\/(recent-results|latest-results)\b/.test(u)) continue;
+
+          // add a cache-buster to dodge CDN caches
+          const url = u + (u.includes("?") ? "&" : "?") + "v=" + Date.now();
+
+          try {
+            const r = await fetch(url);
+            if (!r.ok) continue;
+
+            const ct = (r.headers.get("content-type") || "").toLowerCase();
+            const text = await r.text();
+
+            // Skip aggregated/JSON payloads even if server mislabels content-type
+            const looksJson =
+              ct.includes("application/json") || /^\s*[\[{]/.test(text);
+            if (looksJson) continue;
+
+            // Basic CSV sanity check (avoid HTML/error pages)
+            const head = text.slice(0, 400);
+            const looksCsv =
+              /[,;\t]/.test(head) ||
+              /(^|\n)(entity|entity_name|status|filing_id|started_at)\b/i.test(
+                head
+              );
+            const looksHtml = /<html[\s>]/i.test(head);
+
+            if (!looksCsv || looksHtml) continue;
+
+            console.debug("[run-select] using", u);
+            return { text, usedUrl: u };
+          } catch {
+            // try next
+          }
+        }
+
+        throw new Error("All CSV fetch attempts failed for this run");
+      }
+
+      async function loadCombinedClient(days = RECENT_DAYS) {
+        // 1) Get the list of run CSVs for the window
+        let runs = [];
+        try {
+          runs = await fetch(
+            `/result-files?days=${encodeURIComponent(days)}`
+          ).then((r) => r.json());
+        } catch (e) {
+          console.warn("result-files failed", e);
+        }
+        if (!Array.isArray(runs) || runs.length === 0) {
+          // nothing to combine -> fall back to latest
+          await loadLatestResults();
+          return;
+        }
+
+        // 2) Fetch & parse all CSVs
+        const csvs = await Promise.all(
+          runs.map(async (r) => {
+            try {
+              const txt = await fetch(r.url).then((x) => {
+                if (!x.ok) throw new Error("CSV fetch failed " + r.url);
+                return x.text();
+              });
+              const parsed = Papa.parse(txt, {
+                header: true,
+                skipEmptyLines: true,
+              });
+              const rows = Array.isArray(parsed.data) ? parsed.data : [];
+              // Tag the source (optional, useful for debugging)
+              rows.forEach((row) => {
+                row.__run_label = r.label || "";
+              });
+              return rows;
+            } catch (e) {
+              console.warn("Failed one CSV:", r.url, e);
+              return [];
+            }
+          })
+        );
+
+        // 3) Flatten
+        let allRows = csvs.flat();
+
+        // 4) Dedupe (entity + filing_id + started_at is a good-enough key)
+        const seen = new Set();
+        allRows = allRows.filter((r) => {
+          const k = [
+            (r.entity_name || r.entity || "").trim().toLowerCase(),
+            (r.filing_id || "").trim(),
+            (r.started_at || "").trim(),
+          ].join("|");
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+
+        // 5) Sort desc by started_at (fallback to keep stable order)
+        const toTime = (s) => {
+          if (!s) return 0;
+          // tolerate "YYYY-MM-DD HH:mm:ss" by replacing space with 'T'
+          const isoish = s.includes("T") ? s : s.replace(" ", "T");
+          const t = Date.parse(isoish);
+          return isNaN(t) ? 0 : t;
+        };
+        allRows.sort((a, b) => toTime(b.started_at) - toTime(a.started_at));
+
+        // 6) Render and update stats
+        renderResultsRows(allRows);
+        updateStatsFromRows(allRows);
+
+        // Combined view shouldn't show per-run downloads
+        const dlCsv = document.getElementById("runDownloadCsv");
+        const dlZip = document.getElementById("runDownloadZip");
+        dlCsv.classList.add("hidden");
+        dlCsv.removeAttribute("href");
+        dlZip.classList.add("hidden");
+        dlZip.removeAttribute("href");
+      }
+
       async function loadLatestResults() {
         try {
           const meta = await fetch("/latest-results").then((r) => r.json());
@@ -1576,6 +2005,11 @@
         await fetch(soft ? "/stop-run" : "/stop-run-now", { method: "POST" });
       }
 
+      exportMenuBtn?.addEventListener("click", () => {
+        const open = exportMenuPanel.classList.toggle("hidden");
+        exportMenuBtn.setAttribute("aria-expanded", (!open).toString());
+      });
+
       // Upload CSV (auto-start)
       csvInput.addEventListener("change", async (e) => {
         const file = e.target.files?.[0];
@@ -1599,6 +2033,8 @@
 
         const fd = new FormData();
         fd.append("file", file, file.name);
+
+        validateCsvBeforeUpload(file);
 
         const res = await fetch("/upload-csv", { method: "POST", body: fd });
         if (!res.ok) {
