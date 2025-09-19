@@ -30,6 +30,12 @@ PRUNE_FOLDERS = [
     if s.strip()
 ]
 
+_DESIGNATION_END_RE = re.compile(
+    r"(?:L\.?L\.?C\.?|L\.?C\.?|LC|Limited Liability(?:\s+Co\.?|\s+Company)|"
+    r"Limited Company|Ltd\. Liability(?:\s+Co\.?|\s+Company))\.?\s*$",
+    re.IGNORECASE,
+)
+
 
 # =========================
 # --- CONSTANTS ---
@@ -1195,6 +1201,28 @@ def _click_entity_result(page, entity_name: str) -> None:
     expect(link).to_be_visible(timeout=10000)
     link.click()
 
+def has_valid_designation(name: str) -> bool:
+    return bool(_DESIGNATION_END_RE.search((name or "").strip()))
+
+def add_default_designation(name: str) -> str:
+    base = (name or "").strip().rstrip(",.;")
+    return base if has_valid_designation(base) else f"{base} LLC"
+
+def designation_error_text(page, timeout_ms: int = 2000) -> str:
+    """
+    Returns the page's designation error text if present (e.g. 'The Entity Name must contain one of the following designations: ...'),
+    else empty string.
+    """
+    try:
+        el = page.locator("#lblErrorMessage")
+        el.wait_for(state="visible", timeout=timeout_ms)
+        txt = (el.inner_text() or "").strip()
+        if "must contain one of the following designations" in txt.lower():
+            return txt
+    except Exception:
+        pass
+    return ""
+
 def _extract_filing_id(page) -> str:
     try:
         label = page.get_by_text(re.compile(r"Filing\s*ID", re.I)).first
@@ -2134,7 +2162,7 @@ def tidy_note(s: str) -> str:
 # =========================
 def run(playwright: Playwright, filing_data: dict, payment_details: dict, captcha_api_key: str) -> dict:
     # --- Browser ---
-    browser = playwright.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
+    browser = playwright.chromium.launch(headless=False, args=["--disable-dev-shm-usage"])
     context = browser.new_context(
         accept_downloads=True,
         viewport={"width": 1366, "height": 900},
@@ -2189,18 +2217,40 @@ def run(playwright: Playwright, filing_data: dict, payment_details: dict, captch
         # 2) Registration: name entry + availability check
         with step("Enter entity name", "Registration", entity=entity):
             expect(page.locator("#txtName")).to_be_visible()
+            expect(page.locator("#txtNameConfirm")).to_be_visible()
+
+            # Do not auto-append LLC; fail fast if designation missing
+            if not has_valid_designation(entity):
+                msg = (
+                    "Entity name missing required designation. "
+                    "The Entity Name must contain one of the following designations: "
+                    "L.C., L.L.C., LC, Limited Company, Limited Liability Co., "
+                    "Limited Liability Company, LLC, Ltd. Liability Co., "
+                    "Ltd. Liability Company"
+                )
+                emit_ux("Validation", msg, "error", entity=entity)
+                raise SkipEntity(msg)
+
+            # Fill as-is (no modification)
             page.locator("#txtName").fill(entity)
             page.locator("#txtNameConfirm").fill(entity)
             emit_ux("Registration", "Entity name entered", "info", entity=entity)
 
-            # First Next
-            page.get_by_role("button", name="Next >>").click()
+            # First Next (prefer explicit ID; fallback to role)
+            clicked = False
+            try:
+                page.locator("#ContinueButton").click(timeout=2000)
+                clicked = True
+            except Exception:
+                pass
+            if not clicked:
+                page.get_by_role("button", name=re.compile(r"^Next\s*>>$", re.I)).click()
 
-            # Immediate banner?
-            reason = _name_unavailable_reason(page, timeout_ms=6000)
-            if reason:
-                emit_ux("Availability", f"Name not available. {reason}", "skipped", entity=entity)
-                raise SkipEntity(reason)
+            # If the page still throws a designation error (edge cases), stop this entity
+            msg = designation_error_text(page, timeout_ms=2500)
+            if msg:
+                emit_ux("Validation", f"Name designation invalid: {msg}", "error", entity=entity)
+                raise SkipEntity(f"Name designation invalid. {msg}")
 
             # Some flows need a second Next
             try:
@@ -2208,7 +2258,7 @@ def run(playwright: Playwright, filing_data: dict, payment_details: dict, captch
             except Exception:
                 pass
 
-            # Final quick check
+            # Final quick availability check (your existing helper)
             reason = _name_unavailable_reason(page, timeout_ms=2500)
             if reason:
                 emit_ux("Availability", f"Name not available. {reason}", "skipped", entity=entity)
