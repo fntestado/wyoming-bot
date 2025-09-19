@@ -308,38 +308,47 @@ def run(
     csv_path: str = "filings.csv",
     run_id: str | None = None,
 ):
+    # Start from current process environment (includes systemd EnvironmentFile)
     env = os.environ.copy()
-    env.update({
-        "WY_VAULT": vault,
-        "WY_ITEM_DEFAULTS": item_defaults,
-        "WY_ITEM_CARD": item_card,
-        "WY_ITEM_2CAPTCHA": item_2captcha,
-        "WY_DATA_DIR": data_dir,
-        "WY_OUT_DIR": out_dir,
-        "WY_FILINGS_CSV": csv_path,
-    })
 
-    # Pick a run id and expose it to the child
+    # Helper: only set a key if it's not already present (preserves systemd values)
+    def _set_if_missing(k: str, v: str):
+        if not env.get(k):
+            env[k] = v
+
+    # Prefer systemd-provided values; fall back to query/defaults
+    _set_if_missing("WY_VAULT", vault)
+    _set_if_missing("WY_ITEM_DEFAULTS", item_defaults)
+    _set_if_missing("WY_ITEM_CARD", item_card)
+    _set_if_missing("WY_ITEM_2CAPTCHA", item_2captcha)
+    _set_if_missing("WY_DATA_DIR", data_dir)
+    _set_if_missing("WY_OUT_DIR", out_dir)
+    _set_if_missing("WY_FILINGS_CSV", csv_path)
+
+    # Ensure PYTHONUNBUFFERED for real-time logs
+    env["PYTHONUNBUFFERED"] = "1"
+
+    # Pass the 1Password token through if present (already present via copy(), but harmless)
+    tok = os.getenv("OP_SERVICE_ACCOUNT_TOKEN")
+    if tok:
+        env["OP_SERVICE_ACCOUNT_TOKEN"] = tok
+
+    # Choose a run id and expose it
     rid = run_id or _make_run_id()
     env["WY_RUN_ID"] = rid
+    CURRENT.update({"run_id": rid, "csv_path": env.get("WY_FILINGS_CSV", csv_path)})
 
-    # Let /active-run report csv_path (and anything else you want)
-    CURRENT.update({"run_id": rid, "csv_path": csv_path})
-
+    # Record meta for the UI
     meta_path = _run_dir(rid) / "meta.json"
     meta_path.write_text(json.dumps({
         "id": rid,
-        "csv_path": csv_path,
+        "csv_path": env.get("WY_FILINGS_CSV", csv_path),
         "started_at": datetime.now().isoformat(timespec="seconds"),
     }, ensure_ascii=False), encoding="utf-8")
 
+    # Launch main.py from the src directory base
     cmd = [sys.executable, "-u", str(BASE_DIR / "main.py")]
 
-    env["PYTHONUNBUFFERED"] = "1"
-
-    if os.getenv("OP_SERVICE_ACCOUNT_TOKEN"):
-        env["OP_SERVICE_ACCOUNT_TOKEN"] = os.getenv("OP_SERVICE_ACCOUNT_TOKEN")
-    
     return StreamingResponse(
         _stream_process(cmd, env, rid),
         media_type="text/event-stream",
