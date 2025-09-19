@@ -999,6 +999,16 @@ def get_defaults_profile_from_1password(vault: str, item_title: str) -> dict:
     """
     profile: dict = {}
 
+    # Skip if 'op' not installed
+    if not shutil.which("op"):
+        print(">>> 1Password CLI ('op') not installed; skipping defaults from 1Password.")
+        return {}
+
+    # Skip if no service account token available
+    if not os.getenv("OP_SERVICE_ACCOUNT_TOKEN", "").strip():
+        print(">>> OP_SERVICE_ACCOUNT_TOKEN not set; skipping defaults from 1Password.")
+        return {}
+
     # local key normalizer (keeps this function self-contained)
     def _norm_key_local(k: str) -> str:
         if not k:
