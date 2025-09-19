@@ -1,5 +1,5 @@
 # server.py
-import os, re, sys, csv, subprocess, asyncio, json, threading, time, glob, io, zipfile
+import os, re, sys, csv, subprocess, asyncio, json, threading, time, glob, io, zipfile, shutil
 from datetime import datetime, timedelta
 from typing import Iterator, Optional
 from pathlib import Path
@@ -9,11 +9,11 @@ from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, JSO
 from fastapi.staticfiles import StaticFiles
 from functools import lru_cache
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = os.getenv("WY_DATA_DIR", os.path.join(BASE_DIR, "data"))
 OUT_DIR  = os.getenv("WY_OUT_DIR",  os.path.join(BASE_DIR, "output"))
 UI_DIR   = os.getenv("WY_UI_DIR",   os.path.join(BASE_DIR, "ui"))
+OUTPUT_DIR = OUT_DIR
 
 _RA_FIELD_KEYS = {
     "registered_agent_name",
@@ -95,8 +95,13 @@ def _bg_worker(cmd: list[str], env: dict, run_id: str):
     _tee("Starting run…", logf)
 
     proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1, env=env
+        cmd,
+        cwd=str(BASE_DIR),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        bufsize=1,
+        text=True,
     )
     CURRENT.update({"run_id": run_id, "proc": proc, "dir": str(rdir), "log": str(logf), "csv": meta["csv_path"]})
 
@@ -157,8 +162,13 @@ def _stream_process(cmd: list[str], env: dict, run_id: str):
     _tee("Starting run…", logf)
 
     proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1, env=env
+        cmd,
+        cwd=str(BASE_DIR),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        bufsize=1,
+        text=True,
     )
 
     # publish this as the active run
@@ -323,7 +333,11 @@ def run(
         "started_at": datetime.now().isoformat(timespec="seconds"),
     }, ensure_ascii=False), encoding="utf-8")
 
-    cmd = ["python3", "main.py"]
+    cmd = [sys.executable, "-u", str(BASE_DIR / "main.py")]
+
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    
     return StreamingResponse(
         _stream_process(cmd, env, rid),
         media_type="text/event-stream",
