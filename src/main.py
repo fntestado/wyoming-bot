@@ -834,159 +834,144 @@ def get_2captcha_api_key(vault_name: str, item_title: str) -> str:
 
 def get_payment_details_from_1password(vault_name: str, item_title: str) -> dict:
     """
-    Fetch payment details from 1Password preferring an EXACT title match in the given vault.
-    Order of resolution:
-      1) Unique exact title match in vault (case-sensitive)  <-- preferred
-      2) WY_ITEM_CARD_ID env (explicit item id)
-      3) op get by title (may be fuzzy; last resort)
-
-    If multiple items share the exact same title, raise with a clear message unless
-    WY_ITEM_CARD_ID is set to disambiguate.
+    Fetch payment details from 1Password using a service account token (OP_SERVICE_ACCOUNT_TOKEN).
+    This version REQUIRES the 1Password CLI ("op") and a valid token; it does not fall back.
     """
-    print(">>> Fetching payment details from 1Password vault...")
+    print(">>> Fetching payment details from 1Password (service account)…", flush=True)
 
-    selector = None
-    exact_candidates = []
-
-    # 1) Try to resolve a unique exact-title match in the vault
-    try:
-        lst = subprocess.run(
-            ["op", "item", "list", "--vault", vault_name, "--format", "json"],
-            capture_output=True, text=True, check=True
+    op = shutil.which("op")
+    if not op:
+        raise RuntimeError(
+            "1Password CLI ('op') is not installed. Install it on the server and try again."
         )
-        items = json.loads(lst.stdout)
-        exact_candidates = [it for it in (items or []) if (it.get("title") or "") == item_title]
-    except subprocess.CalledProcessError as e:
-        # listing failed (auth, etc.) -> we’ll fall back below
-        print(f"!!! op item list failed; will try fallback. {e.stderr.strip()}")
 
-    if len(exact_candidates) == 1:
-        selector = exact_candidates[0].get("id")
+    token = (os.getenv("OP_SERVICE_ACCOUNT_TOKEN") or "").strip()
+    token_file = (os.getenv("OP_SERVICE_ACCOUNT_TOKEN_FILE") or "").strip()
+    if not token and token_file:
+        try:
+            token = open(token_file, "r", encoding="utf-8").read().strip()
+        except Exception:
+            pass
+    if not token:
+        raise RuntimeError(
+            "OP_SERVICE_ACCOUNT_TOKEN (or OP_SERVICE_ACCOUNT_TOKEN_FILE) is not set. "
+            "Provide a 1Password service account token."
+        )
+
+    env = os.environ.copy()
+    env["OP_SERVICE_ACCOUNT_TOKEN"] = token
+
+    # Optional: verify auth
+    try:
+        subprocess.run([op, "whoami", "--format", "json"],
+                       env=env, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError("1Password CLI authentication failed. Check your service account token.") from e
+
+    # Prefer an exact-title match in the given vault
+    try:
+        lst = subprocess.run([op, "item", "list", "--vault", vault_name, "--format", "json"],
+                             env=env, capture_output=True, text=True, check=True)
+        items = json.loads(lst.stdout) or []
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to list items in vault '{vault_name}': {e.stderr.strip()}") from e
+
+    exact = [it for it in items if (it.get("title") or "") == item_title]
+    if len(exact) == 1:
+        selector = exact[0]["id"]
         print(f">>> Using exact title match: {item_title} (id={selector})")
-    elif len(exact_candidates) > 1:
-        env_id = os.getenv("WY_ITEM_CARD_ID", "").strip()
-        if env_id:
-            selector = env_id
-            print(f">>> Multiple items titled '{item_title}'. Using WY_ITEM_CARD_ID={env_id}.")
-        else:
+    elif len(exact) > 1:
+        env_id = (os.getenv("WY_ITEM_CARD_ID") or "").strip()
+        if not env_id:
+            ids = ", ".join(it.get("id","") for it in exact[:5])
             raise RuntimeError(
-                f"Multiple 1Password items have the exact title '{item_title}'. "
-                f"Set WY_ITEM_CARD_ID to the desired item id or rename the duplicates."
+                f"Multiple items titled '{item_title}' in vault '{vault_name}'. "
+                f"Set WY_ITEM_CARD_ID to the desired item id. Candidates: {ids}…"
             )
+        selector = env_id
+        print(f">>> Multiple matches; using WY_ITEM_CARD_ID={selector}")
+    else:
+        # allow explicit ID or fall back to title lookup (may be fuzzy on 1P side)
+        selector = (os.getenv("WY_ITEM_CARD_ID") or "").strip() or item_title
+        if selector == item_title:
+            print(">>> No exact-title match; using title lookup via 1Password.")
 
-    # 2) If no exact match, fall back to explicit ID if provided
-    if not selector:
-        env_id = os.getenv("WY_ITEM_CARD_ID", "").strip()
-        if env_id:
-            selector = env_id
-            print(f">>> No unique exact match; using WY_ITEM_CARD_ID={env_id}")
-
-    # 3) Last resort: ask op to get by title (can be fuzzy)
-    if not selector:
-        selector = item_title
-        print(f">>> No exact match and no ID; falling back to op get by title: {selector}")
-
-    # --- Fetch the chosen item JSON ---
     try:
-        result = subprocess.run(
-            ["op", "item", "get", selector, "--vault", vault_name, "--format", "json"],
-            capture_output=True, text=True, check=True
-        )
+        res = subprocess.run([op, "item", "get", selector, "--vault", vault_name, "--format", "json"],
+                             env=env, capture_output=True, text=True, check=True)
+        item_json = json.loads(res.stdout)
     except subprocess.CalledProcessError as e:
-        err = (e.stderr or "").strip()
-        if "More than one item matches" in err:
+        msg = (e.stderr or "").lower()
+        if "more than one item matches" in msg:
             raise RuntimeError(
                 f"1Password returned multiple matches for '{selector}'. "
-                f"Please set WY_ITEM_CARD_ID to the exact item id you want."
+                f"Set WY_ITEM_CARD_ID to the exact item id."
             ) from e
-        if "not currently signed in" in err.lower():
-            raise RuntimeError(
-                "1Password CLI is not authenticated. Export OP_SERVICE_ACCOUNT_TOKEN "
-                "or OP_SERVICE_ACCOUNT_TOKEN_FILE and retry."
-            ) from e
-        raise
+        raise RuntimeError(f"Failed to fetch 1Password item '{selector}': {(e.stderr or '').strip()}") from e
+    except json.JSONDecodeError as e:
+        raise RuntimeError("Failed to parse 1Password response JSON.") from e
 
-    try:
-        item_json = json.loads(result.stdout)
-    except Exception as e:
-        raise RuntimeError("Failed to parse 1Password item JSON.") from e
+    fields = item_json.get("fields") or []
 
-    fields = item_json.get("fields", []) or []
-
-    def _get_field(*labels):
+    def _get(*labels):
+        wants = {lb.strip().lower() for lb in labels}
         for f in fields:
-            label = (f.get("label") or f.get("id") or "").strip().lower()
-            if label in labels:
-                return f.get("value", "")
+            lab = (f.get("label") or f.get("id") or f.get("purpose") or "").strip().lower()
+            if lab in wants:
+                return (f.get("value") or "").strip()
         return ""
 
     def _norm_exp(v, out_style="MMYY"):
-        """
-        Accepts: '10/2026', '10/26', '1026', '10-2026', '2026-10', '202610', '2026/10'
-        Returns: MMYY (default) or MM/YY
-        """
         s = str(v or "").strip()
         digits = re.sub(r"\D", "", s)
-
-        mm = None
-        yy2 = None
-
-        # With separators first (handles MM/YY, MM/YYYY, YYYY/MM, YYYY-MM)
+        mm = None; yy2 = None
         m = re.match(r"^\s*(\d{1,4})\s*[\/\-\s]\s*(\d{1,4})\s*$", s)
         if m:
             a, b = m.group(1), m.group(2)
-            if 1 <= int(a) <= 12:           # MM / (YY|YYYY)
-                mm  = int(a)
-                yy2 = b[-2:]
-            elif len(a) == 4 and 1 <= int(b) <= 12:  # YYYY / MM
-                mm  = int(b)
-                yy2 = a[-2:]
+            if a.isdigit() and 1 <= int(a) <= 12:
+                mm = int(a); yy2 = b[-2:]
+            elif len(a) == 4 and b.isdigit() and 1 <= int(b) <= 12:
+                mm = int(b); yy2 = a[-2:]
         else:
-            # Compact numeric
-            if len(digits) == 4:            # MMYY
-                mm  = int(digits[:2])
-                yy2 = digits[2:]
+            if len(digits) == 4:
+                mm = int(digits[:2]); yy2 = digits[2:]
             elif len(digits) == 6:
-                # Disambiguate MMYYYY vs YYYYMM
-                first_two  = int(digits[:2])
-                last_two   = int(digits[4:6])
-                first_four = int(digits[:4])
+                first_two = int(digits[:2]); last_two = int(digits[4:6]); first_four = int(digits[:4])
                 if (first_two > 12 and 1 <= last_two <= 12) or (1900 <= first_four <= 2099 and 1 <= last_two <= 12):
-                    # Treat as YYYYMM
-                    mm  = last_two
-                    yy2 = digits[2:4]
+                    mm = last_two; yy2 = digits[2:4]
                 else:
-                    # Treat as MMYYYY
-                    mm  = first_two
-                    yy2 = digits[4:6]
+                    mm = first_two; yy2 = digits[4:6]
             else:
                 return ""
-
         mm = max(1, min(int(mm), 12))
-        return f"{mm:02d}/{yy2}" if out_style.upper() == "MM/YY" else f"{mm:02d}{yy2}"
+        return f"{mm:02d}{yy2}" if out_style.upper() == "MMYY" else f"{mm:02d}/{yy2}"
 
-    card_details = {
-        "card_number": _get_field("number", "card number", "cardnumber"),
-        "exp_date":    _norm_exp(_get_field("expiry date", "expiration date", "exp", "expires"), out_style="MMYY"),
-        "cvv":         _get_field("verification number", "cvv", "cvc", "security code"),
-        "company":     _get_field("billing company", "company"),
-        "first_name":  _get_field("billing first name", "first name"),
-        "last_name":   _get_field("billing last name", "last name"),
-        "address":     _get_field("billing address", "address 1", "address", "street address"),
-        "city":        _get_field("billing city", "city"),
-        "state":       _get_field("billing state", "state"),
-        "zip":         _get_field("billing zip", "postal code", "zip"),
-        "email":       _get_field("billing email", "email"),
+    exp_raw   = _get("expiry date", "expiration date", "exp", "expires")
+    exp_mm_yy = _norm_exp(exp_raw, out_style="MMYY")
+    details = {
+        "card_name":   _get("cardholder name", "name on card", "card name", "name"),
+        "card_number": _get("number", "card number", "cardnumber"),
+        "exp_date":    exp_mm_yy,
+        "exp_mm":      exp_mm_yy[:2] if len(exp_mm_yy) == 4 else "",
+        "exp_yy":      exp_mm_yy[2:] if len(exp_mm_yy) == 4 else "",
+        "cvv":         _get("verification number", "cvv", "cvc", "security code"),
+        "company":     _get("billing company", "company"),
+        "first_name":  _get("billing first name", "first name"),
+        "last_name":   _get("billing last name", "last name"),
+        "address":     _get("billing address", "address 1", "address", "street address"),
+        "city":        _get("billing city", "city"),
+        "state":       _get("billing state", "state"),
+        "zip":         _get("billing zip", "postal code", "zip"),
+        "email":       _get("billing email", "email"),
+        "_source":     "1password",
     }
 
-    # print('exp_date='+_get_field("expiry date", "expiration date", "exp", "expires"))
-
-    missing = [k for k in ("card_number", "exp_date", "cvv") if not card_details.get(k)]
+    missing = [k for k in ("card_number", "exp_date", "cvv") if not details.get(k)]
     if missing:
-        print(f"!!! Warning: missing card fields from 1Password: {', '.join(missing)}")
+        raise RuntimeError(f"Missing required card fields in 1Password item: {', '.join(missing)}")
 
-    print(">>> Successfully fetched payment details.")
-    return card_details
+    print(">>> Payment details fetched from 1Password.")
+    return details
 
 def get_defaults_profile_from_1password(vault: str, item_title: str) -> dict:
     """
@@ -2533,6 +2518,12 @@ if __name__ == "__main__":
 
     with sync_playwright() as p:
         payment_details = get_payment_details_from_1password(VAULT, ITEM_CARD)
+
+        required = ["card_name", "card_number", "exp_mm", "exp_yy", "cvv"]
+        if not payment_details or not all(payment_details.get(k) for k in required):
+            print(">>> Missing payment details. Either install 1Password CLI+token, or set WY_CARD_* in .env", flush=True)
+            sys.exit(1)
+        
         captcha_api_key = get_2captcha_api_key(VAULT, ITEM_2CAPTCHA)
         print(f">>> Using 2Captcha key: {captcha_api_key[:4]}…{captcha_api_key[-4:]} (len={len(captcha_api_key)})  repr={repr(captcha_api_key)}")
         validate_2captcha_key(captcha_api_key)
