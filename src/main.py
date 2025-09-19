@@ -2157,7 +2157,7 @@ def tidy_note(s: str) -> str:
 # =========================
 def run(playwright: Playwright, filing_data: dict, payment_details: dict, captcha_api_key: str) -> dict:
     # --- Browser ---
-    browser = playwright.chromium.launch(headless=False, args=["--disable-dev-shm-usage"])
+    browser = playwright.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
     context = browser.new_context(
         accept_downloads=True,
         viewport={"width": 1366, "height": 900},
