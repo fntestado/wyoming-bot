@@ -835,55 +835,76 @@ def get_2captcha_api_key(vault_name: str, item_title: str) -> str:
 def get_payment_details_from_1password(vault_name: str, item_title: str) -> dict:
     """
     Fetch payment details from 1Password using a service account token (OP_SERVICE_ACCOUNT_TOKEN).
-    This version REQUIRES the 1Password CLI ("op") and a valid token; it does not fall back.
+    - Requires the 1Password CLI ("op") to be installed on the server.
+    - Requires OP_SERVICE_ACCOUNT_TOKEN (or OP_SERVICE_ACCOUNT_TOKEN_FILE) to be present.
+    - Prefers an exact title match in the given vault; if multiple, use WY_ITEM_CARD_ID to disambiguate.
     """
     print(">>> Fetching payment details from 1Password (service account)…", flush=True)
 
+    # --- Resolve `op` and the service-account token ---
     op = shutil.which("op")
     if not op:
-        raise RuntimeError(
-            "1Password CLI ('op') is not installed. Install it on the server and try again."
-        )
+        raise RuntimeError("1Password CLI ('op') is not installed or not on PATH.")
 
     token = (os.getenv("OP_SERVICE_ACCOUNT_TOKEN") or "").strip()
     token_file = (os.getenv("OP_SERVICE_ACCOUNT_TOKEN_FILE") or "").strip()
     if not token and token_file:
         try:
-            token = open(token_file, "r", encoding="utf-8").read().strip()
+            with open(token_file, "r", encoding="utf-8") as fh:
+                token = fh.read().strip()
         except Exception:
             pass
     if not token:
         raise RuntimeError(
             "OP_SERVICE_ACCOUNT_TOKEN (or OP_SERVICE_ACCOUNT_TOKEN_FILE) is not set. "
-            "Provide a 1Password service account token."
+            "Provide a valid 1Password service account token (starts with 'ops_')."
         )
 
     env = os.environ.copy()
     env["OP_SERVICE_ACCOUNT_TOKEN"] = token
 
-    # Optional: verify auth
+    # --- Verify the token actually works with `op whoami` ---
     try:
-        subprocess.run([op, "whoami", "--format", "json"],
-                       env=env, capture_output=True, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError("1Password CLI authentication failed. Check your service account token.") from e
-
-    # Prefer an exact-title match in the given vault
-    try:
-        lst = subprocess.run([op, "item", "list", "--vault", vault_name, "--format", "json"],
+        who = subprocess.run([op, "whoami", "--format", "json"],
                              env=env, capture_output=True, text=True, check=True)
-        items = json.loads(lst.stdout) or []
+        # Optional sanity check: json.loads(who.stdout)
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to list items in vault '{vault_name}': {e.stderr.strip()}") from e
+        err = (e.stderr or e.stdout or "").strip()
+        low = err.lower()
+        if "unrecognized auth type" in low:
+            raise RuntimeError(
+                "1Password: token looks malformed (unrecognized auth type). "
+                "Ensure OP_SERVICE_ACCOUNT_TOKEN is the *service account* token (starts with 'ops_'), "
+                "is single-line, and has no extra quotes/spaces."
+            ) from e
+        if "not currently signed in" in low:
+            raise RuntimeError(
+                "1Password CLI is not authenticated. Make sure OP_SERVICE_ACCOUNT_TOKEN is exported "
+                "in the process environment (and not only in your shell)."
+            ) from e
+        raise RuntimeError(f"1Password CLI authentication failed: {err}") from e
+
+    # --- Prefer an exact-title match in `vault_name` ---
+    try:
+        lst = subprocess.run(
+            [op, "item", "list", "--vault", vault_name, "--format", "json"],
+            env=env, capture_output=True, text=True, check=True
+        )
+        items = json.loads(lst.stdout or "[]")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to list items in vault '{vault_name}': {(e.stderr or e.stdout or '').strip()}") from e
+    except json.JSONDecodeError as e:
+        raise RuntimeError("Failed to parse 1Password list response JSON.") from e
 
     exact = [it for it in items if (it.get("title") or "") == item_title]
+
     if len(exact) == 1:
-        selector = exact[0]["id"]
+        selector = exact[0].get("id")
         print(f">>> Using exact title match: {item_title} (id={selector})")
     elif len(exact) > 1:
         env_id = (os.getenv("WY_ITEM_CARD_ID") or "").strip()
         if not env_id:
-            ids = ", ".join(it.get("id","") for it in exact[:5])
+            ids = ", ".join((it.get("id") or "") for it in exact[:5])
             raise RuntimeError(
                 f"Multiple items titled '{item_title}' in vault '{vault_name}'. "
                 f"Set WY_ITEM_CARD_ID to the desired item id. Candidates: {ids}…"
@@ -891,29 +912,38 @@ def get_payment_details_from_1password(vault_name: str, item_title: str) -> dict
         selector = env_id
         print(f">>> Multiple matches; using WY_ITEM_CARD_ID={selector}")
     else:
-        # allow explicit ID or fall back to title lookup (may be fuzzy on 1P side)
+        # No exact match: let explicit ID win; otherwise let 1Password do the title lookup.
         selector = (os.getenv("WY_ITEM_CARD_ID") or "").strip() or item_title
         if selector == item_title:
             print(">>> No exact-title match; using title lookup via 1Password.")
 
+    # --- Fetch the selected item JSON ---
     try:
-        res = subprocess.run([op, "item", "get", selector, "--vault", vault_name, "--format", "json"],
-                             env=env, capture_output=True, text=True, check=True)
-        item_json = json.loads(res.stdout)
+        res = subprocess.run(
+            [op, "item", "get", selector, "--vault", vault_name, "--format", "json"],
+            env=env, capture_output=True, text=True, check=True
+        )
+        item_json = json.loads(res.stdout or "{}")
     except subprocess.CalledProcessError as e:
-        msg = (e.stderr or "").lower()
-        if "more than one item matches" in msg:
+        msg = (e.stderr or e.stdout or "").strip()
+        low = msg.lower()
+        if "more than one item matches" in low:
             raise RuntimeError(
                 f"1Password returned multiple matches for '{selector}'. "
                 f"Set WY_ITEM_CARD_ID to the exact item id."
             ) from e
-        raise RuntimeError(f"Failed to fetch 1Password item '{selector}': {(e.stderr or '').strip()}") from e
+        if "not currently signed in" in low:
+            raise RuntimeError(
+                "1Password CLI lost auth. Ensure OP_SERVICE_ACCOUNT_TOKEN is present for this process."
+            ) from e
+        raise RuntimeError(f"Failed to fetch 1Password item '{selector}': {msg}") from e
     except json.JSONDecodeError as e:
-        raise RuntimeError("Failed to parse 1Password response JSON.") from e
+        raise RuntimeError("Failed to parse 1Password item JSON.") from e
 
     fields = item_json.get("fields") or []
 
     def _get(*labels):
+        """Get a field value by any of several possible labels/ids/purposes."""
         wants = {lb.strip().lower() for lb in labels}
         for f in fields:
             lab = (f.get("label") or f.get("id") or f.get("purpose") or "").strip().lower()
@@ -922,9 +952,14 @@ def get_payment_details_from_1password(vault_name: str, item_title: str) -> dict
         return ""
 
     def _norm_exp(v, out_style="MMYY"):
+        """
+        Accepts: '10/2026', '10/26', '1026', '10-2026', '2026-10', '202610', '2026/10'
+        Returns: 'MMYY' (default) or 'MM/YY'
+        """
         s = str(v or "").strip()
         digits = re.sub(r"\D", "", s)
         mm = None; yy2 = None
+
         m = re.match(r"^\s*(\d{1,4})\s*[\/\-\s]\s*(\d{1,4})\s*$", s)
         if m:
             a, b = m.group(1), m.group(2)
@@ -933,14 +968,16 @@ def get_payment_details_from_1password(vault_name: str, item_title: str) -> dict
             elif len(a) == 4 and b.isdigit() and 1 <= int(b) <= 12:
                 mm = int(b); yy2 = a[-2:]
         else:
-            if len(digits) == 4:
+            if len(digits) == 4:            # MMYY
                 mm = int(digits[:2]); yy2 = digits[2:]
-            elif len(digits) == 6:
-                first_two = int(digits[:2]); last_two = int(digits[4:6]); first_four = int(digits[:4])
+            elif len(digits) == 6:          # MMYYYY or YYYYMM
+                first_two  = int(digits[:2])
+                last_two   = int(digits[4:6])
+                first_four = int(digits[:4])
                 if (first_two > 12 and 1 <= last_two <= 12) or (1900 <= first_four <= 2099 and 1 <= last_two <= 12):
-                    mm = last_two; yy2 = digits[2:4]
+                    mm = last_two; yy2 = digits[2:4]   # YYYYMM
                 else:
-                    mm = first_two; yy2 = digits[4:6]
+                    mm = first_two; yy2 = digits[4:6]  # MMYYYY
             else:
                 return ""
         mm = max(1, min(int(mm), 12))
@@ -948,6 +985,7 @@ def get_payment_details_from_1password(vault_name: str, item_title: str) -> dict
 
     exp_raw   = _get("expiry date", "expiration date", "exp", "expires")
     exp_mm_yy = _norm_exp(exp_raw, out_style="MMYY")
+
     details = {
         "card_name":   _get("cardholder name", "name on card", "card name", "name"),
         "card_number": _get("number", "card number", "cardnumber"),
@@ -966,6 +1004,7 @@ def get_payment_details_from_1password(vault_name: str, item_title: str) -> dict
         "_source":     "1password",
     }
 
+    # Ensure required fields are present
     missing = [k for k in ("card_number", "exp_date", "cvv") if not details.get(k)]
     if missing:
         raise RuntimeError(f"Missing required card fields in 1Password item: {', '.join(missing)}")
@@ -2151,6 +2190,49 @@ def tidy_note(s: str) -> str:
     s = textwrap.dedent(str(s)).strip()
     s = re.sub(r"\s+", " ", s)  # collapse runs of spaces/newlines/tabs
     return s
+
+def _op_env() -> dict:
+    """
+    Return a clean environment for 1Password CLI calls.
+    Ensures OP_SERVICE_ACCOUNT_TOKEN is present and trimmed.
+    """
+    env = os.environ.copy()
+    tok = (env.get("OP_SERVICE_ACCOUNT_TOKEN") or "").strip()
+    env["OP_SERVICE_ACCOUNT_TOKEN"] = tok
+    return env
+
+def _verify_op_service_account(op_path: str = None) -> None:
+    """
+    Make sure `op` is available and the service account token works.
+    Raises RuntimeError with a readable hint if not.
+    """
+    op = op_path or shutil.which("op")
+    if not op:
+        raise RuntimeError("1Password CLI ('op') not found on PATH.")
+
+    tok = (os.getenv("OP_SERVICE_ACCOUNT_TOKEN") or "").strip()
+    if not tok:
+        raise RuntimeError("OP_SERVICE_ACCOUNT_TOKEN is empty or missing.")
+
+    try:
+        r = subprocess.run(
+            [op, "whoami", "--format", "json"],
+            env=_op_env(),
+            capture_output=True, text=True, check=True
+        )
+        # optional: sanity check output
+        # print(">>> op whoami:", r.stdout.strip())
+    except subprocess.CalledProcessError as e:
+        err = (e.stderr or e.stdout or "").strip()
+        # Common fingerprints -> clearer messages
+        if "unrecognized auth type" in err.lower():
+            raise RuntimeError("1Password: token looks malformed (unrecognized auth type). "
+                               "Ensure OP_SERVICE_ACCOUNT_TOKEN is the service-account token (starts with 'ops_'), "
+                               "single-line, no extra quotes or spaces.") from e
+        if "not currently signed in" in err.lower():
+            raise RuntimeError("1Password CLI not authenticated with the service account. "
+                               "OP_SERVICE_ACCOUNT_TOKEN must be set in the process env.") from e
+        raise RuntimeError(f"1Password CLI authentication failed: {err}") from e
 
 # =========================
 # --- Main merged flow  ---
