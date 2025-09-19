@@ -335,8 +335,10 @@ def run(
 
     cmd = [sys.executable, "-u", str(BASE_DIR / "main.py")]
 
-    env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+
+    if os.getenv("OP_SERVICE_ACCOUNT_TOKEN"):
+        env["OP_SERVICE_ACCOUNT_TOKEN"] = os.getenv("OP_SERVICE_ACCOUNT_TOKEN")
     
     return StreamingResponse(
         _stream_process(cmd, env, rid),
